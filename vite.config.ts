@@ -14,5 +14,8 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    allowedHosts: ['threatprior-ai.onrender.com', '.onrender.com'],
+  },
 })
 
