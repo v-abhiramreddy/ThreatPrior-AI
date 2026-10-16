@@ -1,0 +1,134 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #0b1326;
+  --color-surface-dim: #0b1326;
+  --color-surface-bright: #31394d;
+  --color-surface-container-lowest: #060e20;
+  --color-surface-container-low: #131b2e;
+  --color-surface-container: #171f33;
+  --color-surface-container-high: #222a3d;
+  --color-surface-container-highest: #2d3449;
+  --color-on-surface: #dae2fd;
+  --color-on-surface-variant: #bcc9cd;
+  --color-inverse-surface: #dae2fd;
+  --color-inverse-on-surface: #283044;
+  --color-outline: #869397;
+  --color-outline-variant: #3d494c;
+  --color-surface-tint: #4cd7f6;
+  --color-primary: #4cd7f6;
+  --color-on-primary: #003640;
+  --color-primary-container: #06b6d4;
+  --color-on-primary-container: #00424f;
+  --color-inverse-primary: #00687a;
+  --color-secondary: #4fdbc8;
+  --color-on-secondary: #003731;
+  --color-secondary-container: #04b4a2;
+  --color-on-secondary-container: #003f38;
+  --color-tertiary: #ffb2b7;
+  --color-on-tertiary: #67001b;
+  --color-tertiary-container: #ff7f8b;
+  --color-on-tertiary-container: #7d0023;
+  --color-error: #ffb4ab;
+  --color-on-error: #690005;
+  --color-error-container: #93000a;
+  --color-on-error-container: #ffdad6;
+  --color-primary-fixed: #acedff;
+  --color-primary-fixed-dim: #4cd7f6;
+  --color-on-primary-fixed: #001f26;
+  --color-on-primary-fixed-variant: #004e5c;
+  --color-secondary-fixed: #71f8e4;
+  --color-secondary-fixed-dim: #4fdbc8;
+  --color-on-secondary-fixed: #00201c;
+  --color-on-secondary-fixed-variant: #005048;
+  --color-tertiary-fixed: #ffdadb;
+  --color-tertiary-fixed-dim: #ffb2b7;
+  --color-on-tertiary-fixed: #40000d;
+  --color-on-tertiary-fixed-variant: #92002a;
+  --color-background: #0b1326;
+  --color-on-background: #dae2fd;
+  --color-surface-variant: #2d3449;
+
+  --font-display: "Inter", sans-serif;
+  --font-headline-lg: "Inter", sans-serif;
+  --font-headline-lg-mobile: "Inter", sans-serif;
+  --font-headline-md: "Inter", sans-serif;
+  --font-headline-sm: "Inter", sans-serif;
+  --font-body-lg: "Inter", sans-serif;
+  --font-body-md: "Inter", sans-serif;
+  --font-body-sm: "Inter", sans-serif;
+  --font-label-md: "Inter", sans-serif;
+  --font-code-lg: "JetBrains Mono", monospace;
+  --font-code-md: "JetBrains Mono", monospace;
+  --font-code-sm: "JetBrains Mono", monospace;
+  --font-label-sm: "JetBrains Mono", monospace;
+
+  --spacing-space-xs: 0.25rem;
+  --spacing-space-sm: 0.5rem;
+  --spacing-space-md: 0.75rem;
+  --spacing-space-lg: 1rem;
+  --spacing-space-xl: 1.5rem;
+  --spacing-gutter: 1rem;
+  --spacing-gutter-mobile: 0.5rem;
+  --spacing-margin: 1.5rem;
+  --spacing-margin-mobile: 1rem;
+
+  --radius-DEFAULT: 0.125rem;
+  --radius-lg: 0.25rem;
+  --radius-xl: 0.5rem;
+  --radius-full: 0.75rem;
+}
+
+@layer base {
+  html, body {
+    margin: 0;
+    padding: 0;
+    background-color: var(--color-background);
+    color: var(--color-on-surface);
+  }
+  body {
+    overscroll-behavior: none;
+    font-family: var(--font-body-md);
+  }
+}
+
+::-webkit-scrollbar {
+  display: none;
+}
+
+/* Typography Utilities aligned with Stitch Design System */
+.font-display { font-family: "Inter", sans-serif; }
+.text-display { font-size: 36px; line-height: 44px; letter-spacing: -0.02em; font-weight: 600; }
+
+.font-headline-lg { font-family: "Inter", sans-serif; }
+.text-headline-lg { font-size: 28px; line-height: 36px; letter-spacing: -0.02em; font-weight: 600; }
+
+.font-headline-md { font-family: "Inter", sans-serif; }
+.text-headline-md { font-size: 20px; line-height: 28px; letter-spacing: -0.01em; font-weight: 600; }
+
+.font-headline-sm { font-family: "Inter", sans-serif; }
+.text-headline-sm { font-size: 16px; line-height: 24px; font-weight: 600; }
+
+.font-body-lg { font-family: "Inter", sans-serif; }
+.text-body-lg { font-size: 16px; line-height: 24px; font-weight: 400; }
+
+.font-body-md { font-family: "Inter", sans-serif; }
+.text-body-md { font-size: 14px; line-height: 20px; font-weight: 400; }
+
+.font-body-sm { font-family: "Inter", sans-serif; }
+.text-body-sm { font-size: 12px; line-height: 16px; font-weight: 400; }
+
+.font-code-lg { font-family: "JetBrains Mono", monospace; }
+.text-code-lg { font-size: 14px; line-height: 20px; letter-spacing: -0.01em; font-weight: 500; }
+
+.font-code-md { font-family: "JetBrains Mono", monospace; }
+.text-code-md { font-size: 12px; line-height: 16px; font-weight: 500; }
+
+.font-code-sm { font-family: "JetBrains Mono", monospace; }
+.text-code-sm { font-size: 11px; line-height: 14px; font-weight: 400; }
+
+.font-label-md { font-family: "Inter", sans-serif; }
+.text-label-md { font-size: 12px; line-height: 16px; letter-spacing: 0.02em; font-weight: 500; }
+
+.font-label-sm { font-family: "JetBrains Mono", monospace; }
+.text-label-sm { font-size: 10px; line-height: 12px; letter-spacing: 0.05em; font-weight: 600; }

@@ -1,0 +1,114 @@
+# =============================================================================
+# ThreatPrior AI — Comprehensive .gitignore (DevSecOps Hardened)
+# =============================================================================
+
+# 1. Environment Variables, Keys & Credentials (MANDATORY LEAK PREVENTION)
+.env
+.env.*
+*.env
+*.env.*
+!.env.example
+!backend/.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.pkcs12
+*.crt
+*.cer
+*.der
+*id_rsa*
+*id_ed25519*
+.aws/
+*credentials*.json
+!*mock*.json
+service-account*.json
+
+# 2. Python Virtual Environments, Bytecode & Caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.venv/
+backend/.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+
+# 3. Node & Frontend Build Artifacts
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# 4. End-to-End Test & Playwright Outputs
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# 5. Large Model Weights & Checkpoints (Hugging Face / PyTorch)
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.onnx
+*.h5
+*.msgpack
+
+# 6. Logs & Temporary Files
+logs/
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# 7. IDE & Operating System Artifacts
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
