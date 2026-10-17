@@ -21,13 +21,34 @@ export class ApiError extends Error {
 }
 
 /**
+ * Base URL for backend API requests.
+ * Defaults to empty string (relative paths such as '/api/...') for single-service deployments
+ * and local development via Vite proxy.
+ * Can be overridden via VITE_API_BASE_URL when frontend and backend are hosted on different origins.
+ */
+export const API_BASE_URL: string = (
+  typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL
+    ? String(import.meta.env.VITE_API_BASE_URL).trim()
+    : ''
+).replace(/\/+$/, '');
+
+/**
+ * Helper to construct an API endpoint URL.
+ * Prefixes API_BASE_URL if set, or returns relative path.
+ */
+export function getApiUrl(path: string): string {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  return API_BASE_URL ? `${API_BASE_URL}${cleanPath}` : cleanPath;
+}
+
+/**
  * Fetch aggregated vulnerability intelligence from the backend API.
  */
 export async function fetchVulnerability(cveId: string): Promise<VulnerabilityApiResponse> {
   const normalizedId = cveId.trim().toUpperCase();
 
   try {
-    const response = await fetch(`/api/vulnerabilities/${encodeURIComponent(normalizedId)}`, {
+    const response = await fetch(getApiUrl(`/api/vulnerabilities/${encodeURIComponent(normalizedId)}`), {
       headers: {
         Accept: 'application/json',
       },
@@ -71,7 +92,7 @@ export async function fetchTriageDecision(cveId: string): Promise<TriageApiRespo
   const normalizedId = cveId.trim().toUpperCase();
 
   try {
-    const response = await fetch(`/api/vulnerabilities/${encodeURIComponent(normalizedId)}/triage`, {
+    const response = await fetch(getApiUrl(`/api/vulnerabilities/${encodeURIComponent(normalizedId)}/triage`), {
       headers: {
         Accept: 'application/json',
       },
@@ -96,7 +117,7 @@ export async function fetchTriageDecision(cveId: string): Promise<TriageApiRespo
     }
 
     // Fallback probe to base vulnerability endpoint (handles tests/mocks that only intercepted /api/vulnerabilities/${cveId})
-    const baseRes = await fetch(`/api/vulnerabilities/${encodeURIComponent(normalizedId)}`, {
+    const baseRes = await fetch(getApiUrl(`/api/vulnerabilities/${encodeURIComponent(normalizedId)}`), {
       headers: { Accept: 'application/json' },
     });
 
@@ -154,7 +175,7 @@ export async function fetchTriageDecision(cveId: string): Promise<TriageApiRespo
     }
     // If the triage endpoint fetch failed because the base route was aborted (offline test) or mocked differently:
     try {
-      const baseCheck = await fetch(`/api/vulnerabilities/${encodeURIComponent(normalizedId)}`, {
+      const baseCheck = await fetch(getApiUrl(`/api/vulnerabilities/${encodeURIComponent(normalizedId)}`), {
         headers: { Accept: 'application/json' },
       });
       if (baseCheck.status === 400) {

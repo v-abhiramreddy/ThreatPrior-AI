@@ -1,0 +1,35 @@
+# ==============================================================================
+# ThreatPrior AI — Docker Ignore
+# ==============================================================================
+.git
+.github
+.vscode
+.idea
+.env
+.env.*
+backend/.env
+backend/.env.*
+
+# Python virtual environment & caches
+__pycache__
+*.py[cod]
+*$py.class
+.venv/
+backend/.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node & frontend artifacts
+node_modules/
+dist/
+dist-ssr/
+npm-debug.log*
+
+# Test reports & browser caches
+test-results/
+playwright-report/
+playwright/.cache/
+screenshots/
+logs/
+*.log

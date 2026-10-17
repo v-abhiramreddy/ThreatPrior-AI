@@ -127,6 +127,34 @@ Open `http://localhost:5173` in your browser.
 
 ---
 
+## Production Single-Service Deployment (Render)
+
+ThreatPrior AI supports single-service deployment where a single Render Web Service runs FastAPI/Uvicorn to serve both the compiled React frontend (`dist/`) and all `/api/*` REST endpoints on the assigned `$PORT`.
+
+### Recommended Option: Render Docker Runtime (Deterministic)
+
+Render natively supports multi-stage Docker builds, ensuring reproducible builds with both Node.js 20 (for compiling TypeScript/React) and Python 3.12 (for FastAPI and AI models):
+
+1. **Service Type**: Web Service
+2. **Environment**: `Docker`
+3. **Dockerfile Path**: `Dockerfile`
+4. **Docker Context**: `.`
+5. **Environment Variables**:
+   - `AWS_ACCESS_KEY_ID`: Your AWS access key ID
+   - `AWS_SECRET_ACCESS_KEY`: Your AWS secret access key
+   - `AWS_REGION`: `ap-southeast-2` (or `us-east-1`)
+   - `BEDROCK_MODEL_ID`: `au.anthropic.claude-sonnet-4-6` (or `us.anthropic.claude-sonnet-4-6` / `amazon.nova-lite-v1:0`)
+   - `STRANDS_DECIDER_MODE`: `auto` (or `local`)
+   - `VITE_API_BASE_URL`: *(Leave empty / unset for single-service same-origin deployment)*
+
+### Alternative Option: Render Native Shell (build.sh)
+
+If using a native environment with both Node.js and Python available:
+- **Build Command**: `chmod +x build.sh && ./build.sh`
+- **Start Command**: `uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT`
+
+---
+
 ## Running Tests
 
 ### Backend Unit & Regression Suite (`pytest`)

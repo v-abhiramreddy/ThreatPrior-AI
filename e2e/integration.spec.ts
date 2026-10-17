@@ -341,4 +341,49 @@ test.describe('Frontend–Backend Integration Tests', () => {
     await expect(page.locator('#demo-mode-indicator')).toContainText('Offline Demo');
     await expect(page.locator('#pipeline-mode-badge')).toContainText('Offline Demo Mode');
   });
+
+  test('should use relative /api endpoint URLs by default when requesting triage data', async ({ page }) => {
+    const interceptedUrls: string[] = [];
+
+    await page.route('**/api/vulnerabilities/**', async (route) => {
+      interceptedUrls.push(route.request().url());
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          cve_id: 'CVE-2021-44228',
+          status: 'OK',
+          retrieved_at: '2026-10-16T12:00:00Z',
+          normalized: {
+            title: 'Apache Log4j2 RCE',
+            description: 'Apache Log4j2 JNDI RCE vulnerability.',
+            primary_severity: 'CRITICAL',
+            cvss_score: 10.0,
+            cvss_version: '3.1',
+            is_cisa_kev: true,
+          },
+          provenance: {
+            nvd: { source: 'NIST NVD', status: 'AVAILABLE', weaknesses: [], cpe_configurations: [] },
+            cisa_kev: { source: 'CISA KEV', status: 'LISTED', is_listed: true },
+            epss: { source: 'FIRST EPSS', status: 'AVAILABLE', probability: 0.99 },
+          },
+          errors: [],
+        }),
+      });
+    });
+
+    await page.goto('/');
+    await page.locator('#cve-input').fill('CVE-2021-44228');
+    await page.locator('#btn-analyze').click();
+
+    // Verify at least one request was made and the URL starts with the origin and /api/
+    expect(interceptedUrls.length).toBeGreaterThan(0);
+    for (const url of interceptedUrls) {
+      const parsed = new URL(url);
+      expect(parsed.pathname.startsWith('/api/vulnerabilities/')).toBe(true);
+      // Origin should match the window origin (127.0.0.1:5173), proving relative API usage
+      expect(parsed.host).toBe('127.0.0.1:5173');
+    }
+  });
 });
+
