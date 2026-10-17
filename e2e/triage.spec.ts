@@ -597,5 +597,139 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
     await expect(page.locator('#risk-insufficient-badge')).toContainText('Insufficient Telemetry for Policy');
     await expect(page.locator('#validation-explanation-text')).toContainText('cannot be treated as NOT_LISTED');
   });
+
+  test('should display accurate fallback when dual-ai response has missing bedrock model ID', async ({ page }) => {
+    await page.route('**/api/vulnerabilities/CVE-2023-4863/triage', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          cve_id: 'CVE-2023-4863',
+          status: 'OK',
+          retrieved_at: '2026-10-16T14:00:00.000Z',
+          decision: {
+            priority: 'Critical',
+            rationale: 'Critical heap buffer overflow in libwebp.',
+            risk_factors: ['CVSS 8.8'],
+            recommended_action: 'Upgrade libwebp.',
+            confidence: 0.95,
+            confidence_is_calibrated: false,
+            recommendation_source: 'bedrock_synthesis',
+            recommendation_is_verified: false,
+            confidence_explanation: 'Model-derived confidence.',
+            evidence_limitations: [],
+            engine: 'dual-ai',
+            decider_model_id: 'StrandsAgents/strands-decider-2B-qwen3.5-v1-2610',
+            bedrock_model_id: null,
+            decider_status: 'success',
+            bedrock_status: 'unavailable',
+            decided_at: '2026-10-16T14:00:01.000Z',
+          },
+          normalized: {
+            title: 'Heap buffer overflow in libwebp',
+            description: 'Heap buffer overflow in libwebp in Google Chrome.',
+            primary_severity: 'CRITICAL',
+            cvss_score: 8.8,
+            cvss_version: '3.1',
+            cvss_vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H',
+            is_cisa_kev: true,
+            cisa_required_action: 'Apply updates.',
+            cisa_due_date: '2023-10-04',
+            epss_probability: 0.85,
+            epss_percentile: 0.99,
+            affected_cpe_count: 10,
+          },
+          provenance: {
+            nvd: { source: 'NVD', status: 'AVAILABLE', weaknesses: [], cpe_configurations: [] },
+            cisa_kev: { source: 'CISA KEV', status: 'LISTED', is_listed: true },
+            epss: { source: 'EPSS', status: 'AVAILABLE', probability: 0.85 },
+          },
+        }),
+      });
+    });
+
+    await page.goto('/');
+    await page.locator('#cve-input').fill('CVE-2023-4863');
+    await page.locator('#btn-analyze').click();
+
+    // Verify engine subtitle displays accurate fallback instead of hardcoded amazon.nova-lite-v1:0
+    await expect(page.locator('#engine-subtitle')).toContainText('Bedrock: Unavailable');
+    await expect(page.locator('#engine-subtitle')).not.toContainText('amazon.nova-lite-v1:0');
+  });
+
+  test('should display distinct authoritative directive card and unverified AI synthesis for KEV vulnerability', async ({ page }) => {
+    await page.route('**/api/vulnerabilities/CVE-2021-44228/triage', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          cve_id: 'CVE-2021-44228',
+          status: 'OK',
+          retrieved_at: '2026-10-17T12:00:00.000Z',
+          decision: {
+            priority: 'Critical',
+            rationale: 'Active in-the-wild exploitation confirmed via CISA KEV with CVSS 10.0.',
+            risk_factors: ['CISA KEV active threat', 'CVSS 10.0'],
+            recommended_action: 'Upgrade Apache Log4j dependencies across all microservices.',
+            recommendation_source: 'bedrock_synthesis',
+            recommendation_is_verified: false,
+            recommendation_url: 'https://www.cisa.gov/uscert/ed-22-02-apache-log4j-recommended-mitigation-measures',
+            authoritative_directive: 'For all affected software assets for which updates exist, the only acceptable remediation actions are: 1) Apply updates; OR 2) remove affected assets from agency networks.',
+            authoritative_directive_source: 'cisa_kev',
+            authoritative_directive_url: 'https://www.cisa.gov/uscert/ed-22-02-apache-log4j-recommended-mitigation-measures',
+            confidence: 0.96,
+            confidence_is_calibrated: false,
+            confidence_explanation: 'Model-derived Strands Decider 2B confidence score (uncalibrated).',
+            evidence_limitations: [
+              'Stage 2 operational recommendations are synthesized by AI and have not been independently fact-checked against vendor release registries; operators must validate patch targets before deployment.',
+            ],
+            engine: 'dual-ai',
+            decider_model_id: 'StrandsAgents/strands-decider-2B-qwen3.5-v1-2610',
+            bedrock_model_id: 'au.anthropic.claude-sonnet-4-6',
+            decider_status: 'success',
+            bedrock_status: 'success',
+            decided_at: '2026-10-17T12:00:01.000Z',
+          },
+          normalized: {
+            title: 'Log4Shell JNDI RCE',
+            description: 'Apache Log4j2 JNDI RCE vulnerability.',
+            primary_severity: 'CRITICAL',
+            cvss_score: 10.0,
+            cvss_version: '3.1',
+            cvss_vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H',
+            is_cisa_kev: true,
+            cisa_required_action: 'Apply updates.',
+            epss_probability: 0.99,
+            epss_percentile: 1.0,
+            affected_cpe_count: 10,
+          },
+          provenance: {
+            nvd: { source: 'NVD', status: 'AVAILABLE', weaknesses: [], cpe_configurations: [] },
+            cisa_kev: { source: 'CISA KEV', status: 'LISTED', is_listed: true },
+            epss: { source: 'EPSS', status: 'AVAILABLE', probability: 0.99 },
+          },
+        }),
+      });
+    });
+
+    await page.goto('/');
+    await page.locator('#cve-input').fill('CVE-2021-44228');
+    await page.locator('#btn-analyze').click();
+
+    // Verify Authoritative Government Directive panel is present and distinct
+    await expect(page.locator('#authoritative-directive-panel')).toBeVisible();
+    await expect(page.locator('#authoritative-directive-panel')).toContainText('Authoritative Government Directive (CISA KEV)');
+    await expect(page.locator('#authoritative-directive-panel')).toContainText('Verified Mandatory Directive');
+    await expect(page.locator('#authoritative-directive-text')).toContainText('remove affected assets from agency networks');
+    await expect(page.locator('#authoritative-directive-url')).toBeVisible();
+
+    // Verify AI Operational recommendation is separate and marked unverified
+    await expect(page.locator('#remediation-source-badge')).toContainText('Bedrock Synthesis (General Guidance)');
+    await expect(page.locator('#remediation-unverified-tag')).toContainText('Unverified AI Synthesis');
+
+    // Verify Fact-checking limitation is rendered
+    await expect(page.locator('#confidence-limitations-panel')).toContainText('have not been independently fact-checked against vendor release registries');
+  });
 });
+
 

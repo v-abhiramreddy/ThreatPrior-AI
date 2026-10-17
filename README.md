@@ -16,7 +16,7 @@ ThreatPrior AI replaces static CVSS-based triage and hallucination-prone single-
 
 2. **Dual-Stage AI Decision Architecture**:
    - **Stage 1 (System-1 Fast Decision)**: [Strands Decider 2B](https://github.com/strands-labs/strands-decider) (`StrandsAgents/strands-decider-2B-qwen3.5-v1-2610`) evaluates normalized evidence to output a constrained priority choice (`Critical`, `High`, `Medium`, `Low`), raw choice probabilities, uncalibrated distribution peakedness confidence, and emergency operational mitigation requirements.
-   - **Stage 2 (System-2 Grounded Synthesis)**: Amazon Bedrock (`amazon.nova-lite-v1:0` or configured foundation model) synthesizes explainable rationale, risk factors, and actionable remediation playbooks grounded strictly within `<untrusted_evidence_data>` guardrails.
+   - **Stage 2 (System-2 Grounded Synthesis)**: Amazon Bedrock (`amazon.nova-lite-v1:0`, `au.anthropic.claude-sonnet-4-6`, `us.anthropic.claude-sonnet-4-6`, etc.) synthesizes explainable rationale, risk factors, and actionable remediation playbooks grounded strictly within `<untrusted_evidence_data>` guardrails.
    - **Graceful Truthful Degradation**: If Bedrock is unavailable or unauthorized, the engine cleanly degrades to `decider-only` mode; if both AI stages are bypassed, it falls back to a transparent deterministic baseline without misrepresenting AI participation.
 
 3. **Evidence-Based Risk Policy Validation (v2026.1-policy)**:
@@ -92,7 +92,7 @@ cp .env.example backend/.env
 Edit `backend/.env` to configure your preferences:
 - `STRANDS_DECIDER_MODE=local` (runs in-process CPU PyTorch inference) or `remote` (calls a running `strands-decider serve` instance).
 - Optional: `NVD_API_KEY` for higher rate limits.
-- AWS credentials for Bedrock via standard AWS environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`).
+- AWS credentials and configuration for Bedrock (`AWS_REGION=ap-southeast-2` or `us-east-1`, and `BEDROCK_MODEL_ID=au.anthropic.claude-sonnet-4-6`, `us.anthropic.claude-sonnet-4-6`, or `amazon.nova-lite-v1:0`).
 
 ### 3. Backend Setup & Launch
 

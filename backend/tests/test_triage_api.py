@@ -74,13 +74,15 @@ async def test_triage_api_returns_dual_ai_decision(monkeypatch):
             assert decision["priority"] == "Critical"
             assert decision["engine"] == "dual-ai"
             assert decision["decider_model_id"] == "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610"
-            assert decision["bedrock_model_id"] == "amazon.nova-lite-v1:0"
+            assert decision["bedrock_model_id"] == settings.bedrock_model_id
             assert decision["decider_status"] == "success"
             assert decision["bedrock_status"] == "success"
             assert decision["confidence_is_calibrated"] is False
             assert decision["confidence"] == 0.96
             assert decision["recommendation_source"] == "bedrock_synthesis"
             assert decision["recommendation_is_verified"] is False
+            assert decision["authoritative_directive"] is not None
+            assert decision["authoritative_directive_source"] == "cisa_kev"
             assert len(decision["risk_factors"]) == 3
 
             # Risk validation must be present

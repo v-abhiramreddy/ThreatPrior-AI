@@ -6,7 +6,7 @@ test.describe('Navigation & Routing', () => {
 
     // Header brand and mode indicators
     await expect(page.locator('header')).toContainText('ThreatPrior AI');
-    await expect(page.locator('#demo-mode-indicator')).toContainText('Demo Data Mode');
+    await expect(page.locator('#demo-mode-indicator')).toContainText('Ready to Analyze');
 
     // Default active navigation item
     const analyzeNav = page.locator('#nav-analyze-btn');

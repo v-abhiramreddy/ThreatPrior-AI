@@ -417,3 +417,491 @@ async def test_cisa_not_listed_is_not_treated_as_proof_of_safety():
     decision = await engine.evaluate_vulnerability(resp)
 
     assert any("not proof of safety" in lim.lower() for lim in decision.evidence_limitations)
+
+
+# 9. Support switching to Claude Sonnet 4.6 on Amazon Bedrock
+@pytest.mark.asyncio
+async def test_claude_sonnet_model_switch_and_invocation():
+    decider = create_mock_decider_client(
+        priority=TriagePriority.CRITICAL,
+        confidence=0.962,
+        model_id="StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
+    )
+    claude_model_id = "anthropic.claude-sonnet-4-6"
+
+    mock_bedrock = MagicMock()
+    mock_claude_payload = {
+        "priority": "Critical",
+        "rationale": "Critical remote code execution vulnerability confirmed exploited in CISA KEV.",
+        "risk_factors": ["Confirmed in CISA KEV", "CVSS 10.0 base score"],
+        "recommended_action": "Apply vendor emergency security patch immediately.",
+        "evidence_limitations": [],
+    }
+    mock_bedrock.converse.return_value = {
+        "output": {"message": {"content": [{"text": json.dumps(mock_claude_payload)}]}}
+    }
+
+    engine = DecisionEngine(
+        bedrock_client=mock_bedrock,
+        strands_client_instance=decider,
+        model_id=claude_model_id,
+        allow_fallback=False,
+    )
+    resp = create_sample_response()
+    decision = await engine.evaluate_vulnerability(resp)
+
+    # Verify Bedrock converse was invoked with Claude Sonnet 4.6 model ID
+    mock_bedrock.converse.assert_called_once()
+    call_kwargs = mock_bedrock.converse.call_args.kwargs
+    assert call_kwargs["modelId"] == claude_model_id
+    assert call_kwargs["inferenceConfig"]["temperature"] == 0.0
+
+    # Truthful attribution and provenance
+    assert decision.engine == DecisionEngineType.DUAL_AI
+    assert decision.priority == TriagePriority.CRITICAL
+    assert decision.bedrock_model_id == claude_model_id
+    assert decision.decider_model_id == "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610"
+    assert decision.decider_status == ModelInvocationStatus.SUCCESS
+    assert decision.bedrock_status == ModelInvocationStatus.SUCCESS
+    assert "Critical remote code execution vulnerability" in decision.rationale
+
+
+# 10. Priority Invariance: Claude cannot silently change Stage 1 priority
+@pytest.mark.asyncio
+async def test_claude_cannot_silently_override_stage1_priority():
+    decider = create_mock_decider_client(
+        priority=TriagePriority.CRITICAL,
+        confidence=0.94,
+    )
+
+    mock_bedrock = MagicMock()
+    # Claude attempts to return 'Low' priority while Stage 1 assigned 'Critical'
+    mock_claude_payload = {
+        "priority": "Low",
+        "rationale": "Model attempts to dispute Stage 1 priority choice.",
+        "risk_factors": ["CVSS 10.0"],
+        "recommended_action": "Review configuration.",
+        "evidence_limitations": [],
+    }
+    mock_bedrock.converse.return_value = {
+        "output": {"message": {"content": [{"text": json.dumps(mock_claude_payload)}]}}
+    }
+
+    engine = DecisionEngine(
+        bedrock_client=mock_bedrock,
+        strands_client_instance=decider,
+        model_id="anthropic.claude-sonnet-4-6",
+        allow_fallback=False,
+    )
+    resp = create_sample_response()
+    decision = await engine.evaluate_vulnerability(resp)
+
+    # Stage 1 Decider priority Critical must be strictly maintained
+    assert decision.priority == TriagePriority.CRITICAL
+    assert decision.engine == DecisionEngineType.DUAL_AI
+    assert decision.bedrock_model_id == "anthropic.claude-sonnet-4-6"
+
+
+# 11. Markdown-fenced JSON output from Claude is parsed cleanly
+@pytest.mark.asyncio
+async def test_bedrock_markdown_fenced_json_parsing():
+    decider = create_mock_decider_client(priority=TriagePriority.CRITICAL, confidence=0.95)
+
+    mock_bedrock = MagicMock()
+    raw_claude_response = (
+        "Here is the structured assessment:\n\n"
+        "```json\n"
+        "{\n"
+        '  "priority": "Critical",\n'
+        '  "rationale": "High-severity RCE vulnerability actively exploited in the wild.",\n'
+        '  "risk_factors": ["CISA KEV listed", "CVSS 10.0"],\n'
+        '  "recommended_action": "Upgrade affected systems immediately.",\n'
+        '  "evidence_limitations": []\n'
+        "}\n"
+        "```\n"
+        "End of report."
+    )
+    mock_bedrock.converse.return_value = {
+        "output": {"message": {"content": [{"text": raw_claude_response}]}}
+    }
+
+    engine = DecisionEngine(
+        bedrock_client=mock_bedrock,
+        strands_client_instance=decider,
+        model_id="anthropic.claude-sonnet-4-6",
+        allow_fallback=False,
+    )
+    resp = create_sample_response()
+    decision = await engine.evaluate_vulnerability(resp)
+
+    assert decision.engine == DecisionEngineType.DUAL_AI
+    assert decision.priority == TriagePriority.CRITICAL
+    assert decision.recommended_action == "Upgrade affected systems immediately."
+
+
+# 12. Malformed JSON triggers bounded retry and graceful decider-only fallback
+@pytest.mark.asyncio
+async def test_bedrock_malformed_json_fallback_to_decider_only(monkeypatch):
+    monkeypatch.setattr("app.config.settings.max_decision_retries", 1)
+    monkeypatch.setattr("app.config.settings.retry_backoff_factor", 1.0)
+
+    decider = create_mock_decider_client(priority=TriagePriority.CRITICAL, confidence=0.92)
+
+    mock_bedrock = MagicMock()
+    # Return completely malformed non-JSON text
+    mock_bedrock.converse.return_value = {
+        "output": {"message": {"content": [{"text": "Sorry, I am unable to parse this vulnerability."}]}}
+    }
+
+    engine = DecisionEngine(
+        bedrock_client=mock_bedrock,
+        strands_client_instance=decider,
+        model_id="anthropic.claude-sonnet-4-6",
+        allow_fallback=True,
+    )
+    resp = create_sample_response()
+    decision = await engine.evaluate_vulnerability(resp)
+
+    # Truthful degraded mode: decider-only
+    assert decision.engine == DecisionEngineType.DECIDER_ONLY
+    assert decision.priority == TriagePriority.CRITICAL
+    assert decision.decider_status == ModelInvocationStatus.SUCCESS
+    assert decision.bedrock_status == ModelInvocationStatus.FAILED
+    assert "Malformed model response" in decision.fallback_reason
+    assert mock_bedrock.converse.call_count == 2  # Initial attempt + 1 retry
+
+
+# 13. Missing required schema fields triggers validation error and fallback
+@pytest.mark.asyncio
+async def test_bedrock_missing_required_schema_fields(monkeypatch):
+    monkeypatch.setattr("app.config.settings.max_decision_retries", 0)
+
+    decider = create_mock_decider_client(priority=TriagePriority.HIGH, confidence=0.88)
+
+    mock_bedrock = MagicMock()
+    # Missing 'rationale' and 'recommended_action'
+    invalid_schema_payload = {
+        "priority": "High",
+        "risk_factors": ["CVSS 8.0"],
+    }
+    mock_bedrock.converse.return_value = {
+        "output": {"message": {"content": [{"text": json.dumps(invalid_schema_payload)}]}}
+    }
+
+    engine = DecisionEngine(
+        bedrock_client=mock_bedrock,
+        strands_client_instance=decider,
+        model_id="anthropic.claude-sonnet-4-6",
+        allow_fallback=True,
+    )
+    resp = create_sample_response(cvss_score=8.0, is_cisa_kev=False)
+    decision = await engine.evaluate_vulnerability(resp)
+
+    assert decision.engine == DecisionEngineType.DECIDER_ONLY
+    assert decision.priority == TriagePriority.HIGH
+    assert decision.bedrock_status == ModelInvocationStatus.FAILED
+    assert "failed schema validation" in decision.fallback_reason
+
+
+# 14. Bedrock ThrottlingException retries and degrades safely
+@pytest.mark.asyncio
+async def test_bedrock_throttling_retry_and_eventual_fallback(monkeypatch):
+    monkeypatch.setattr("app.config.settings.max_decision_retries", 1)
+    monkeypatch.setattr("app.config.settings.retry_backoff_factor", 1.0)
+
+    decider = create_mock_decider_client(priority=TriagePriority.HIGH, confidence=0.85)
+
+    mock_bedrock = MagicMock()
+    mock_bedrock.converse.side_effect = botocore.exceptions.ClientError(
+        {"Error": {"Code": "ThrottlingException", "Message": "Rate limit exceeded"}},
+        "Converse",
+    )
+
+    engine = DecisionEngine(
+        bedrock_client=mock_bedrock,
+        strands_client_instance=decider,
+        model_id="anthropic.claude-sonnet-4-6",
+        allow_fallback=True,
+    )
+    resp = create_sample_response()
+    decision = await engine.evaluate_vulnerability(resp)
+
+    assert decision.engine == DecisionEngineType.DECIDER_ONLY
+    assert decision.bedrock_status == ModelInvocationStatus.FAILED
+    assert "ThrottlingException" in decision.fallback_reason
+    assert mock_bedrock.converse.call_count == 2
+
+
+# 15. Verify backend/.env is resolved correctly regardless of working directory (CWD)
+def test_backend_env_loading_consistent_across_cwd(monkeypatch):
+    import os
+    from pathlib import Path
+    from app.config import Settings, BACKEND_ENV_FILE
+
+    # Ensure no external OS env var masks the .env file value
+    monkeypatch.delenv("BEDROCK_MODEL_ID", raising=False)
+    monkeypatch.delenv("AWS_REGION", raising=False)
+
+    orig_cwd = os.getcwd()
+    project_root = Path(__file__).resolve().parent.parent.parent
+
+    try:
+        # Case A: Initialized while CWD is the project root (D:\ThreatPrior AI)
+        os.chdir(project_root)
+        settings_root = Settings()
+        assert BACKEND_ENV_FILE.exists(), "backend/.env should exist"
+        # Must load the model ID from backend/.env, NOT fall back to amazon.nova-lite-v1:0
+        assert settings_root.bedrock_model_id == "au.anthropic.claude-sonnet-4-6"
+        assert settings_root.aws_region == "ap-southeast-2"
+
+        # Case B: Initialized while CWD is the backend directory (D:\ThreatPrior AI\backend)
+        os.chdir(BACKEND_ENV_FILE.parent)
+        settings_backend = Settings()
+        assert settings_backend.bedrock_model_id == "au.anthropic.claude-sonnet-4-6"
+        assert settings_backend.aws_region == "ap-southeast-2"
+
+        # Both must match identically
+        assert settings_root.bedrock_model_id == settings_backend.bedrock_model_id
+        assert settings_root.aws_region == settings_backend.aws_region
+    finally:
+        os.chdir(orig_cwd)
+
+
+# 16. Verify OS environment variable precedence over backend/.env
+def test_os_env_precedence_over_backend_env_file(monkeypatch):
+    from app.config import Settings
+
+    override_model = "us.anthropic.claude-sonnet-4-6-custom"
+    monkeypatch.setenv("BEDROCK_MODEL_ID", override_model)
+
+    settings = Settings()
+    assert settings.bedrock_model_id == override_model
+
+
+# 17. Verify DecisionEngine with Sydney Region and au.anthropic.claude-sonnet-4-6
+@pytest.mark.asyncio
+async def test_decision_engine_sydney_profile_invocation():
+    decider = create_mock_decider_client(
+        priority=TriagePriority.CRITICAL,
+        confidence=0.955,
+    )
+    sydney_model_id = "au.anthropic.claude-sonnet-4-6"
+    sydney_region = "ap-southeast-2"
+
+    mock_bedrock = MagicMock()
+    mock_payload = {
+        "priority": "Critical",
+        "rationale": "Severe Log4Shell vulnerability synthesized via Bedrock Sydney inference profile.",
+        "risk_factors": ["CVSS 10.0", "CISA KEV listed"],
+        "recommended_action": "Apply immediate patching.",
+        "evidence_limitations": [],
+    }
+    mock_bedrock.converse.return_value = {
+        "output": {"message": {"content": [{"text": json.dumps(mock_payload)}]}}
+    }
+
+    engine = DecisionEngine(
+        bedrock_client=mock_bedrock,
+        strands_client_instance=decider,
+        region_name=sydney_region,
+        model_id=sydney_model_id,
+        allow_fallback=False,
+    )
+    resp = create_sample_response()
+    decision = await engine.evaluate_vulnerability(resp)
+
+    # Verify Bedrock converse was invoked with the Sydney model ID
+    mock_bedrock.converse.assert_called_once()
+    call_kwargs = mock_bedrock.converse.call_args.kwargs
+    assert call_kwargs["modelId"] == sydney_model_id
+
+    # Verify attribution
+    assert decision.engine == DecisionEngineType.DUAL_AI
+    assert decision.priority == TriagePriority.CRITICAL
+    assert decision.bedrock_model_id == sydney_model_id
+    assert decision.decider_model_id == "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610"
+    assert "Bedrock Sydney inference profile" in decision.rationale
+
+
+# 18. Verify Authoritative Directive Preservation for KEV-listed vulnerability
+@pytest.mark.asyncio
+async def test_authoritative_directive_preserved_for_cisa_kev():
+    decider = create_mock_decider_client(priority=TriagePriority.CRITICAL)
+    mock_bedrock = MagicMock()
+    mock_payload = {
+        "priority": "Critical",
+        "rationale": "High-risk RCE in log4j2.",
+        "risk_factors": ["CISA KEV active threat", "CVSS 10.0"],
+        "recommended_action": "Coordinate with infrastructure teams to review external ingress.",
+        "evidence_limitations": [],
+    }
+    mock_bedrock.converse.return_value = {
+        "output": {"message": {"content": [{"text": json.dumps(mock_payload)}]}}
+    }
+
+    engine = DecisionEngine(
+        bedrock_client=mock_bedrock,
+        strands_client_instance=decider,
+        allow_fallback=False,
+    )
+    resp = create_sample_response()  # Log4Shell with CISA KEV required_action
+    decision = await engine.evaluate_vulnerability(resp)
+
+    # Verify authoritative directive is preserved separately from model synthesis
+    assert decision.authoritative_directive == resp.provenance.cisa_kev.required_action
+    assert decision.authoritative_directive_source == "cisa_kev"
+    assert decision.authoritative_directive_url == "https://www.cisa.gov/uscert/ed-22-02-apache-log4j-recommended-mitigation-measures"
+
+    # Verify Bedrock synthesis is attributed separately and marked unverified
+    assert decision.recommended_action == "Coordinate with infrastructure teams to review external ingress."
+    assert decision.recommendation_source == "bedrock_synthesis"
+    assert decision.recommendation_is_verified is False
+
+
+# 19. Verify non-KEV vulnerability has None for authoritative directive
+@pytest.mark.asyncio
+async def test_non_kev_authoritative_directive_is_none():
+    decider = create_mock_decider_client(priority=TriagePriority.LOW)
+    mock_bedrock = MagicMock()
+    mock_payload = {
+        "priority": "Low",
+        "rationale": "Low impact vulnerability without active exploitation.",
+        "risk_factors": ["CVSS 2.0"],
+        "recommended_action": "Apply standard routine updates during next release cycle.",
+        "evidence_limitations": [],
+    }
+    mock_bedrock.converse.return_value = {
+        "output": {"message": {"content": [{"text": json.dumps(mock_payload)}]}}
+    }
+
+    engine = DecisionEngine(
+        bedrock_client=mock_bedrock,
+        strands_client_instance=decider,
+        allow_fallback=False,
+    )
+    resp = create_sample_response(
+        cve_id="CVE-2024-0001",
+        is_cisa_kev=False,
+        cisa_status=SourceStatus.NOT_LISTED,
+    )
+    resp.provenance.cisa_kev.required_action = None
+    decision = await engine.evaluate_vulnerability(resp)
+
+    assert decision.authoritative_directive is None
+    assert decision.authoritative_directive_source is None
+    assert decision.authoritative_directive_url is None
+    assert decision.recommendation_source == "bedrock_synthesis"
+    assert decision.recommendation_is_verified is False
+
+
+# 20. Verify detection of unsupported patch target versions in Bedrock recommendations
+@pytest.mark.asyncio
+async def test_unsupported_patch_versions_flagged_in_limitations():
+    decider = create_mock_decider_client(priority=TriagePriority.CRITICAL)
+    mock_bedrock = MagicMock()
+    # Bedrock suggests version 2.17.1 (which is not in the NVD or CISA evidence text)
+    mock_payload = {
+        "priority": "Critical",
+        "rationale": "Log4Shell active exploitation requires immediate remediation.",
+        "risk_factors": ["CVSS 10.0"],
+        "recommended_action": "Upgrade Apache Log4j dependencies to version 2.17.1 immediately across all services.",
+        "evidence_limitations": [],
+    }
+    mock_bedrock.converse.return_value = {
+        "output": {"message": {"content": [{"text": json.dumps(mock_payload)}]}}
+    }
+
+    engine = DecisionEngine(
+        bedrock_client=mock_bedrock,
+        strands_client_instance=decider,
+        allow_fallback=False,
+    )
+    resp = create_sample_response()
+    decision = await engine.evaluate_vulnerability(resp)
+
+    # Useful recommendation is preserved
+    assert "2.17.1" in decision.recommended_action
+
+    # Model-synthesized version is explicitly flagged in evidence_limitations
+    version_lims = [
+        lim for lim in decision.evidence_limitations
+        if "2.17.1" in lim and "model-synthesized" in lim
+    ]
+    assert len(version_lims) == 1
+    assert "not documented in upstream NVD/CISA evidence" in version_lims[0]
+
+
+# 21. Verify detection of technical commands & fact-checking disclaimer
+@pytest.mark.asyncio
+async def test_unsupported_commands_and_fact_checking_disclaimer():
+    decider = create_mock_decider_client(priority=TriagePriority.CRITICAL)
+    mock_bedrock = MagicMock()
+    mock_payload = {
+        "priority": "Critical",
+        "rationale": "Log4Shell exploitation.",
+        "risk_factors": ["CVSS 10.0"],
+        "recommended_action": (
+            "Run zip -q -d log4j-core-*.jar org/apache/logging/log4j/core/lookup/JndiLookup.class "
+            "and set -Dlog4j2.formatMsgNoLookups=true on JVM startup."
+        ),
+        "evidence_limitations": [],
+    }
+    mock_bedrock.converse.return_value = {
+        "output": {"message": {"content": [{"text": json.dumps(mock_payload)}]}}
+    }
+
+    engine = DecisionEngine(
+        bedrock_client=mock_bedrock,
+        strands_client_instance=decider,
+        allow_fallback=False,
+    )
+    resp = create_sample_response()
+    decision = await engine.evaluate_vulnerability(resp)
+
+    # Command syntax is flagged
+    cmd_lims = [
+        lim for lim in decision.evidence_limitations
+        if "Technical commands or system property syntax" in lim
+    ]
+    assert len(cmd_lims) == 1
+    assert "validate in a staging environment" in cmd_lims[0]
+
+    # Explicit fact-checking disclaimer is always present for Bedrock synthesis
+    disclaimer_lims = [
+        lim for lim in decision.evidence_limitations
+        if "have not been independently fact-checked against vendor release registries" in lim
+    ]
+    assert len(disclaimer_lims) == 1
+
+
+# 22. Regression Test: Stage 2 Bedrock CANNOT change Stage 1 Strands Decider priority
+@pytest.mark.asyncio
+async def test_stage2_cannot_override_stage1_priority():
+    # Stage 1 assigns HIGH
+    decider = create_mock_decider_client(priority=TriagePriority.HIGH)
+    mock_bedrock = MagicMock()
+    # Bedrock attempts to propose LOW priority
+    mock_payload = {
+        "priority": "Low",
+        "rationale": "Attempted override of Stage 1 priority.",
+        "risk_factors": ["CVSS 7.5"],
+        "recommended_action": "Apply standard patches.",
+        "evidence_limitations": [],
+    }
+    mock_bedrock.converse.return_value = {
+        "output": {"message": {"content": [{"text": json.dumps(mock_payload)}]}}
+    }
+
+    engine = DecisionEngine(
+        bedrock_client=mock_bedrock,
+        strands_client_instance=decider,
+        allow_fallback=False,
+    )
+    resp = create_sample_response()
+    decision = await engine.evaluate_vulnerability(resp)
+
+    # Invariant: Final decision priority MUST remain Stage 1 priority (HIGH), NOT Stage 2 (LOW)
+    assert decision.priority == TriagePriority.HIGH
+    assert decision.priority != TriagePriority.LOW
+
+

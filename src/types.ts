@@ -1,6 +1,7 @@
 export type SeverityLevel = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN';
 export type PriorityLevel = 'P1' | 'P2' | 'P3' | 'P4';
 export type ViewState = 'loading' | 'empty' | 'error' | 'loaded';
+export type DataMode = 'live' | 'demo' | 'ready' | 'analyzing';
 
 
 export interface RemediationStep {
@@ -72,6 +73,9 @@ export interface CveData {
   recommendationSource?: string;
   recommendationUrl?: string | null;
   recommendationIsVerified?: boolean;
+  authoritativeDirective?: string | null;
+  authoritativeDirectiveSource?: string | null;
+  authoritativeDirectiveUrl?: string | null;
   fallbackReason?: string | null;
   riskValidation?: RiskValidationResult | null;
   sourceStatuses?: {
@@ -195,6 +199,9 @@ export interface TriageDecision {
   recommendation_source?: string;
   recommendation_url?: string | null;
   recommendation_is_verified?: boolean;
+  authoritative_directive?: string | null;
+  authoritative_directive_source?: string | null;
+  authoritative_directive_url?: string | null;
   confidence: number;
   confidence_is_calibrated?: boolean;
   confidence_explanation: string;

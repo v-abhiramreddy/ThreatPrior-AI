@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import botocore.exceptions
 import boto3
+from pydantic import ValidationError
 
 from app.config import settings
 from app.models.enums import OverallStatus, SeverityLevel, SourceStatus
@@ -13,6 +14,7 @@ from app.models.schemas import VulnerabilityResponse
 from app.models.triage import (
     DecisionEngineType,
     ModelInvocationStatus,
+    Stage2BedrockOutput,
     TriageDecision,
     TriagePriority,
 )
@@ -50,6 +52,7 @@ MANDATORY RULES AND SAFETY INVARIANTS:
 5. SOURCE FAILURES AND INTEGRITY: If any source status is FAILED, TIMEOUT, or RATE_LIMITED, you MUST explicitly document this source limitation in 'evidence_limitations'. Never change or treat a FAILED or TIMEOUT source as NOT_LISTED or NOT_FOUND.
 6. STAGE 1 CONSISTENCY: Your output 'priority' MUST match the Stage 1 Strands Decider priority provided in the prompt.
 7. DECISION SUPPORT ONLY: This service provides operational triage support only. Do not propose or execute destructive commands or automated exploitation.
+8. REMEDIATION GROUNDING: In 'recommended_action', focus on operational security procedures (e.g. asset inventory, network isolation, patch rollout). Do not present model-extrapolated patch versions or CLI commands as authoritative directives.
 
 OUTPUT FORMAT:
 You must respond with ONLY a valid, parseable JSON object matching this exact schema:
@@ -283,12 +286,18 @@ class DecisionEngine:
 
         # Remediation provenance & authoritative link extraction
         rec_url = None
+        auth_directive = None
+        auth_directive_source = None
+        auth_directive_url = None
         if is_kev and prov.cisa_kev.required_action:
-            rec_source = "cisa_kev_directive"
-            rec_verified = True
+            auth_directive = prov.cisa_kev.required_action
+            auth_directive_source = "cisa_kev"
             url_match = re.search(r"https?://[^\s)\]]+", prov.cisa_kev.required_action)
             if url_match:
-                rec_url = url_match.group(0).rstrip(".,;:)\"\'")
+                auth_directive_url = url_match.group(0).rstrip(".,;:)\"\'")
+            rec_source = "cisa_kev_directive"
+            rec_verified = True
+            rec_url = auth_directive_url
         else:
             rec_source = "general_policy_guidance"
             rec_verified = False
@@ -311,6 +320,9 @@ class DecisionEngine:
             recommendation_source=rec_source,
             recommendation_url=rec_url,
             recommendation_is_verified=rec_verified,
+            authoritative_directive=auth_directive,
+            authoritative_directive_source=auth_directive_source,
+            authoritative_directive_url=auth_directive_url,
             confidence=confidence,
             confidence_is_calibrated=False,  # Baseline heuristic confidence is uncalibrated
             confidence_explanation=f"{confidence_explanation} (Uncalibrated heuristic score)",
@@ -358,13 +370,19 @@ class DecisionEngine:
         )
 
         rec_url = None
+        auth_directive = None
+        auth_directive_source = None
+        auth_directive_url = None
         if is_kev and prov.cisa_kev.required_action:
             action = prov.cisa_kev.required_action
-            rec_source = "cisa_kev_directive"
-            rec_verified = True
+            auth_directive = prov.cisa_kev.required_action
+            auth_directive_source = "cisa_kev"
             url_match = re.search(r"https?://[^\s)\]]+", prov.cisa_kev.required_action)
             if url_match:
-                rec_url = url_match.group(0).rstrip(".,;:)\"\'")
+                auth_directive_url = url_match.group(0).rstrip(".,;:)\"\'")
+            rec_source = "cisa_kev_directive"
+            rec_verified = True
+            rec_url = auth_directive_url
         else:
             action = f"Adhere to organizational remediation SLA for {decider_eval.priority.value} priority vulnerabilities."
             rec_source = "general_policy_guidance"
@@ -380,6 +398,9 @@ class DecisionEngine:
             recommendation_source=rec_source,
             recommendation_url=rec_url,
             recommendation_is_verified=rec_verified,
+            authoritative_directive=auth_directive,
+            authoritative_directive_source=auth_directive_source,
+            authoritative_directive_url=auth_directive_url,
             confidence=decider_eval.confidence,
             confidence_is_calibrated=False,  # Uncalibrated distribution concentration metric
             confidence_explanation=(
@@ -399,24 +420,125 @@ class DecisionEngine:
             risk_validation=risk_val,
         )
 
+    def _detect_unsupported_remediation_claims(
+        self,
+        raw_rec: str,
+        resp: VulnerabilityResponse,
+    ) -> List[str]:
+        """Identify model-generated patch versions, CLI commands, and append fact-checking disclosures."""
+        limitations: List[str] = []
+        norm = resp.normalized
+        prov = resp.provenance
+
+        # Build corpus of verified evidence text from upstream sources
+        corpus_parts = []
+        if norm and norm.description:
+            corpus_parts.append(norm.description)
+        if prov.nvd and prov.nvd.cpe_configurations:
+            corpus_parts.extend(prov.nvd.cpe_configurations)
+        if prov.cisa_kev and prov.cisa_kev.required_action:
+            corpus_parts.append(prov.cisa_kev.required_action)
+        if prov.cisa_kev and prov.cisa_kev.notes:
+            corpus_parts.append(prov.cisa_kev.notes)
+
+        evidence_corpus = " ".join(corpus_parts).lower()
+
+        # 1. Identify specific target versions in recommendation
+        detected_versions = set()
+        version_pattern = re.compile(
+            r'(?:version|v\.?|upgrade to|update to|patch to|release)\s*([0-9]+\.[0-9]+(?:\.[0-9]+)*[a-zA-Z0-9_\-]*)',
+            re.IGNORECASE,
+        )
+        for m in version_pattern.finditer(raw_rec):
+            ver = m.group(1).rstrip(".,;:)\"'")
+            if ver and len(ver) >= 3:
+                detected_versions.add(ver)
+
+        semver_pattern = re.compile(r'\b([0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.]+)?)\b')
+        for m in semver_pattern.finditer(raw_rec):
+            ver = m.group(1).rstrip(".,;:)\"'")
+            if ver:
+                detected_versions.add(ver)
+
+        cvss_vers = {"3.1", "3.0", "2.0", "4.0"}
+        for ver in sorted(detected_versions):
+            if ver in cvss_vers:
+                continue
+            if ver.lower() not in evidence_corpus:
+                limitations.append(
+                    f"Remediation target version '{ver}' is model-synthesized and not documented in upstream NVD/CISA evidence; verify with official vendor advisories."
+                )
+
+        # 2. Identify technical CLI execution or script commands
+        command_patterns = [
+            (r'\b(?:zip\s+-[a-zA-Z0-9]+|tar\s+-[a-zA-Z0-9]+)\b', "Archive modification command (e.g. zip/tar)"),
+            (r'\b(?:apt-get|apt\s+install|yum\s+install|dnf\s+install|brew\s+install)\b', "System package manager installation command"),
+            (r'\b(?:npm\s+install|pip\s+install|mvn\s+|gradle\s+)\b', "Build/package tool command"),
+            (r'\b(?:systemctl\s+|service\s+|chmod\s+|chown\s+|rm\s+-rf)\b', "System administration command"),
+            (r'\b-D[a-zA-Z0-9_.]+=', "Java/runtime system property flag"),
+        ]
+        detected_cmd_types = []
+        for pat, desc in command_patterns:
+            if re.search(pat, raw_rec, re.IGNORECASE):
+                matches = re.findall(pat, raw_rec, re.IGNORECASE)
+                if any(m.lower() not in evidence_corpus for m in matches if isinstance(m, str)):
+                    detected_cmd_types.append(desc)
+
+        if detected_cmd_types:
+            limitations.append(
+                f"Technical commands or system property syntax ({'; '.join(detected_cmd_types)}) are model-synthesized and not provided by authoritative sources; validate in a staging environment."
+            )
+
+        # 3. Explicit architectural fact-checking disclaimer limitation
+        limitations.append(
+            "Stage 2 operational recommendations are synthesized by AI and have not been independently fact-checked against vendor release registries; operators must validate patch targets before deployment."
+        )
+
+        return limitations
+
     def _parse_and_validate_ai_json(
         self,
         raw_text: str,
         resp: VulnerabilityResponse,
         decider_eval: DeciderEvaluation,
     ) -> TriageDecision:
-        """Parse Bedrock Stage 2 response and construct a verified dual-model TriageDecision."""
+        """Parse Bedrock Stage 2 response and construct a verified dual-model TriageDecision with strict schema validation."""
         clean_text = raw_text.strip()
+
+        # Handle optional markdown code block wrapping (e.g. ```json ... ```)
+        if clean_text.startswith("```"):
+            clean_text = re.sub(r"^```(?:json)?\s*", "", clean_text, flags=re.IGNORECASE)
+            clean_text = re.sub(r"\s*```$", "", clean_text)
+            clean_text = clean_text.strip()
+
         json_match = re.search(r"\{.*\}", clean_text, re.DOTALL)
         if not json_match:
             raise ValueError(f"Bedrock output did not contain a valid JSON object: '{clean_text[:200]}'")
 
-        parsed = json.loads(json_match.group(0))
+        try:
+            raw_dict = json.loads(json_match.group(0))
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            raise ValueError(f"Failed to decode Bedrock JSON output: {str(e)}")
 
-        # Enforce consistency: Stage 1 Decider is the primary decision-maker
-        rationale = str(parsed.get("rationale", "")).strip()
-        if not rationale:
-            raise ValueError("Bedrock returned an empty rationale.")
+        if not isinstance(raw_dict, dict):
+            raise ValueError(f"Bedrock output JSON root must be an object, got {type(raw_dict).__name__}")
+
+        # Strict Pydantic Schema Validation
+        try:
+            stage2_output = Stage2BedrockOutput.model_validate(raw_dict)
+        except ValidationError as e:
+            raise ValueError(f"Bedrock output failed schema validation: {str(e)}")
+
+        # Enforce consistency: Stage 1 Strands Decider is the primary decision-maker
+        if stage2_output.priority is not None and stage2_output.priority != decider_eval.priority:
+            logger.warning(
+                "Stage 2 model-proposed priority '%s' differs from Stage 1 Strands Decider priority '%s'. "
+                "Strictly maintaining Stage 1 priority per architectural invariant.",
+                stage2_output.priority.value,
+                decider_eval.priority.value,
+            )
+
+        rationale = stage2_output.rationale
 
         # Guardrail check 1: Model cannot claim exploitation solely from high EPSS score
         is_kev = resp.provenance.cisa_kev.is_listed
@@ -433,7 +555,7 @@ class DecisionEngine:
                 rationale += " (Note: EPSS probability does not constitute confirmed in-wild exploitation; CISA KEV has not listed this CVE)."
 
         # Guardrail check 2: Preserve source failure limitations
-        evidence_limitations = list(parsed.get("evidence_limitations", []))
+        evidence_limitations = list(stage2_output.evidence_limitations)
         prov = resp.provenance
         if prov.nvd.status in (SourceStatus.FAILED, SourceStatus.TIMEOUT, SourceStatus.RATE_LIMITED):
             lim_text = f"NVD source is {prov.nvd.status.value}: {prov.nvd.error_message or 'Upstream failure'}"
@@ -455,24 +577,42 @@ class DecisionEngine:
             if not any("safety" in item.lower() or "not listed" in item.lower() for item in evidence_limitations):
                 evidence_limitations.append("CISA KEV unlisted: absence is not proof of safety.")
 
-        raw_rec = str(parsed.get("recommended_action", "Review threat telemetry and adhere to patch management policy."))
+        raw_rec = stage2_output.recommended_action
         url_match = re.search(r"https?://[^\s)\]]+", raw_rec)
         rec_url = url_match.group(0).rstrip(".,;:)\"\'") if url_match else None
-        if not rec_url and is_kev and prov.cisa_kev.required_action:
+
+        # Authoritative Directive Preservation for KEV-listed vulnerabilities
+        auth_directive = None
+        auth_directive_source = None
+        auth_directive_url = None
+        if is_kev and prov.cisa_kev.required_action:
+            auth_directive = prov.cisa_kev.required_action
+            auth_directive_source = "cisa_kev"
             cisa_url_match = re.search(r"https?://[^\s)\]]+", prov.cisa_kev.required_action)
             if cisa_url_match:
-                rec_url = cisa_url_match.group(0).rstrip(".,;:)\"\'")
+                auth_directive_url = cisa_url_match.group(0).rstrip(".,;:)\"\'")
+            if not rec_url:
+                rec_url = auth_directive_url
+
+        # Guardrail check 4: Identify unsupported remediation versions/commands and attach fact-checking disclosures
+        unsupported_limitations = self._detect_unsupported_remediation_claims(raw_rec, resp)
+        for lim in unsupported_limitations:
+            if lim not in evidence_limitations:
+                evidence_limitations.append(lim)
 
         risk_val = risk_validator.validate(resp, decider_eval.priority)
 
         return TriageDecision(
             priority=decider_eval.priority,
             rationale=rationale,
-            risk_factors=list(parsed.get("risk_factors", [])),
+            risk_factors=list(stage2_output.risk_factors),
             recommended_action=raw_rec,
             recommendation_source="bedrock_synthesis",
             recommendation_url=rec_url,
             recommendation_is_verified=False,  # AI-synthesized operational advice
+            authoritative_directive=auth_directive,
+            authoritative_directive_source=auth_directive_source,
+            authoritative_directive_url=auth_directive_url,
             confidence=decider_eval.confidence,
             confidence_is_calibrated=False,  # Uncalibrated distribution concentration metric
             confidence_explanation=(

@@ -79,6 +79,8 @@ test.describe('Frontend–Backend Integration Tests', () => {
 
     // Verify live mode indicators
     await expect(page.locator('#pipeline-mode-badge')).toContainText('Live Vulnerability Intelligence Feed');
+    await expect(page.locator('#demo-mode-indicator')).toContainText('Live Intelligence');
+    await expect(page.locator('#data-source-disclaimer')).toContainText('Live feed');
     await expect(page.locator('#provenance-strip')).toBeVisible();
     await expect(page.locator('#provenance-strip')).toContainText('NVD: AVAILABLE');
     await expect(page.locator('#provenance-strip')).toContainText('CISA KEV: LISTED');
@@ -251,14 +253,15 @@ test.describe('Frontend–Backend Integration Tests', () => {
     await expect(page.locator('#state-empty')).toContainText('not found in any upstream intelligence source');
   });
 
-  test('should gracefully handle backend offline and distinguish demo mode from live feed', async ({ page }) => {
+  test('should gracefully handle backend offline, show error without silent fixture substitution, and allow explicit demo fixture loading', async ({ page }) => {
     // Abort all API network requests to simulate backend connection failure
     await page.route('**/api/vulnerabilities/*', (route) => route.abort('connectionrefused'));
 
     await page.goto('/');
 
-    // 1. Initial page load should explicitly indicate Demo Mode
-    await expect(page.locator('#pipeline-mode-badge')).toContainText('Deterministic Triage Pipeline · Demo Mode');
+    // 1. Initial page load should explicitly indicate Ready to Analyze across header and page
+    await expect(page.locator('#demo-mode-indicator')).toContainText('Ready to Analyze');
+    await expect(page.locator('#pipeline-mode-badge')).toContainText('Ready to Analyze');
 
     // 2. Querying a non-preset when backend is offline shows clear error state
     await page.locator('#cve-input').fill('CVE-2022-12345');
@@ -267,10 +270,75 @@ test.describe('Frontend–Backend Integration Tests', () => {
     await expect(page.locator('#state-error')).toBeVisible();
     await expect(page.locator('#state-error')).toContainText('Backend API service is offline or unreachable');
 
-    // 3. Selecting a preset restores demo benchmark cleanly
+    // 3. Clicking a preset pill when backend is offline also attempts live analysis, fails, and DOES NOT silently render fixture
     await page.locator('button[data-cve="CVE-2024-21413"]').click();
+    await expect(page.locator('#state-error')).toBeVisible();
+    await expect(page.locator('#state-error')).toContainText('Backend API service is offline or unreachable');
+
+    // 4. Explicit action allows loading the offline demo fixture
+    const loadFixtureBtn = page.locator('#btn-load-offline-fixture');
+    await expect(loadFixtureBtn).toBeVisible();
+    await loadFixtureBtn.click();
+
+    // 5. Offline fixture loaded: header, badge, and disclaimer all agree on Offline Demo
     await expect(page.locator('#state-loaded')).toBeVisible();
     await expect(page.locator('#target-cve-id')).toContainText('CVE-2024-21413');
-    await expect(page.locator('#pipeline-mode-badge')).toContainText('Demo Mode');
+    await expect(page.locator('#demo-mode-indicator')).toContainText('Offline Demo');
+    await expect(page.locator('#pipeline-mode-badge')).toContainText('Offline Demo Mode');
+    await expect(page.locator('#data-source-disclaimer')).toContainText('Offline demo fixture');
+  });
+
+  test('should keep header and analysis view mode in sync without contradiction', async ({ page }) => {
+    // Mock successful live response for preset pill
+    await page.route('**/api/vulnerabilities/CVE-2024-21413**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          cve_id: 'CVE-2024-21413',
+          status: 'OK',
+          retrieved_at: '2026-10-16T12:00:00Z',
+          normalized: {
+            title: 'MonikerLink Outlook Remote Code Execution',
+            description: 'Microsoft Outlook Remote Code Execution Vulnerability.',
+            primary_severity: 'CRITICAL',
+            cvss_score: 9.8,
+            cvss_version: '3.1',
+            cvss_vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H',
+            is_cisa_kev: true,
+            cisa_required_action: 'Apply vendor update.',
+            cisa_due_date: '2024-03-05',
+            epss_probability: 0.892,
+            epss_percentile: 0.985,
+            affected_cpe_count: 12,
+          },
+          provenance: {
+            nvd: { source: 'NIST NVD', status: 'AVAILABLE', weaknesses: ['CWE-20'], cpe_configurations: [] },
+            cisa_kev: { source: 'CISA KEV', status: 'LISTED', is_listed: true, date_added: '2024-02-13' },
+            epss: { source: 'FIRST EPSS', status: 'AVAILABLE', probability: 0.892, percentile: 0.985 },
+          },
+          errors: [],
+        }),
+      });
+    });
+
+    await page.goto('/');
+
+    // Initial: Ready to Analyze
+    await expect(page.locator('#demo-mode-indicator')).toContainText('Ready to Analyze');
+    await expect(page.locator('#pipeline-mode-badge')).toContainText('Ready to Analyze');
+
+    // Click quick-select pill: initiates live API call
+    await page.locator('button[data-cve="CVE-2024-21413"]').click();
+
+    // After live response: Live Intelligence
+    await expect(page.locator('#demo-mode-indicator')).toContainText('Live Intelligence');
+    await expect(page.locator('#pipeline-mode-badge')).toContainText('Live Vulnerability Intelligence Feed');
+    await expect(page.locator('#target-cve-id')).toContainText('CVE-2024-21413');
+
+    // Load offline demo fixture explicitly via toolbar
+    await page.locator('#btn-pill-demo-fixture').click();
+    await expect(page.locator('#demo-mode-indicator')).toContainText('Offline Demo');
+    await expect(page.locator('#pipeline-mode-badge')).toContainText('Offline Demo Mode');
   });
 });

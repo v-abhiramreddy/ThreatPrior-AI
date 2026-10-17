@@ -1,6 +1,11 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pathlib import Path
 from typing import Optional
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Anchor environment file resolution to the backend directory
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+BACKEND_ENV_FILE = BACKEND_DIR / ".env"
 
 
 class Settings(BaseSettings):
@@ -43,7 +48,11 @@ class Settings(BaseSettings):
     )
     bedrock_model_id: str = Field(
         default="amazon.nova-lite-v1:0",
-        description="Amazon Bedrock model ID for triage reasoning and explanation",
+        description=(
+            "Amazon Bedrock model ID or inference profile for Stage 2 triage reasoning and explanation. "
+            "Supports Amazon Nova (e.g., 'amazon.nova-lite-v1:0') and Anthropic Claude "
+            "(e.g., 'anthropic.claude-sonnet-4-6', 'us.anthropic.claude-sonnet-4-6', or 'au.anthropic.claude-sonnet-4-6')."
+        ),
     )
     strands_decider_model_id: str = Field(
         default="StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
@@ -90,7 +99,7 @@ class Settings(BaseSettings):
     debug: bool = False
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=BACKEND_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
     )

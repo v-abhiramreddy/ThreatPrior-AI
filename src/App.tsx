@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import type { DataMode } from './types';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { VulnerabilityAnalysis } from './pages/VulnerabilityAnalysis';
@@ -12,6 +13,7 @@ export function App() {
     return 'analyze';
   });
   const [selectedCve, setSelectedCve] = useState<string>('CVE-2021-44228');
+  const [dataMode, setDataMode] = useState<DataMode>('ready');
 
   // Listen to hash changes for direct URL navigation in tests and bookmarks
   useEffect(() => {
@@ -39,11 +41,15 @@ export function App() {
 
   return (
     <div className="bg-background text-on-surface min-h-screen flex flex-col font-body-md antialiased selection:bg-primary/20 selection:text-primary">
-      <Header currentTab={currentTab} onSelectTab={handleSelectTab} />
+      <Header currentTab={currentTab} onSelectTab={handleSelectTab} dataMode={dataMode} />
 
       <main className="flex-1 w-full pt-14 flex flex-col">
         {currentTab === 'analyze' ? (
-          <VulnerabilityAnalysis initialCve={selectedCve} />
+          <VulnerabilityAnalysis
+            initialCve={selectedCve}
+            dataMode={dataMode}
+            onDataModeChange={setDataMode}
+          />
         ) : (
           <AnalysisHistory onSelectCve={handleSelectCveFromHistory} />
         )}

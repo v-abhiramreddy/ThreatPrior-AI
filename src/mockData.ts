@@ -18,6 +18,74 @@ export const DEMO_CVE_PRESETS: Record<string, CveData> = {
     priorityBadge: 'Priority 1: Immediate Mitigation Required',
     priorityColor: 'text-error',
     priorityContainerColor: 'bg-error-container/20 border-error/20',
+    engine: 'dual-ai',
+    deciderModelId: 'StrandsAgents/strands-decider-2B-qwen3.5-v1-2610',
+    bedrockModelId: 'au.anthropic.claude-sonnet-4-6',
+    deciderStatus: 'success',
+    bedrockStatus: 'success',
+    confidence: 0.94,
+    confidenceIsCalibrated: false,
+    confidenceExplanation:
+      'Model-derived Strands Decider 2B confidence score (uncalibrated peak probability distribution over priority classes).',
+    recommendationSource: 'bedrock_synthesis',
+    recommendationIsVerified: false,
+    authoritativeDirective:
+      'For all affected software assets for which updates exist, the only acceptable remediation actions are: 1) Apply updates; OR 2) remove affected assets from agency networks. Temporary mitigations using one of the measures provided at https://www.cisa.gov/uscert/ed-22-02-apache-log4j-recommended-mitigation-measures are only acceptable until updates are available.',
+    authoritativeDirectiveSource: 'cisa_kev',
+    authoritativeDirectiveUrl:
+      'https://www.cisa.gov/uscert/ed-22-02-apache-log4j-recommended-mitigation-measures',
+    evidenceLimitations: [
+      'Extrapolated target patch version "2.17.1" is not confirmed in upstream NVD telemetry or affected CPE ranges; verify against vendor advisory.',
+      'Extrapolated CLI command syntax ("zip -q -d...", JVM parameters) cannot be verified from NVD or CISA KEV structured telemetry.',
+      'Stage 2 operational recommendations are synthesized by AI and have not been independently fact-checked against vendor release registries; operators must validate patch targets before deployment.',
+    ],
+    riskValidation: {
+      validation_rules_version: '2026.1-policy',
+      risk_validation_status: 'disagreement',
+      model_priority: 'High',
+      evidence_priority: 'Critical',
+      validation_explanation:
+        'Policy Disagreement: Model assigned High priority, while deterministic evidence policy evaluates to Critical. Primary policy trigger: Confirmed CISA KEV active exploitation combined with critical impact. Deterministic policy findings represent organizational rules, not an alternate AI model.',
+      risk_factors: [
+        'NVD CVSS Base Score: 10.0 (CRITICAL) [Published: 2021-12-10T10:15:08.767].',
+        'CISA KEV: Listed as confirmed active threat (Added: 2021-12-10) [Catalog Version: 2026.10.15].',
+        'EPSS Likelihood: 97.4% (99.8th percentile).',
+      ],
+    },
+    decision: {
+      priority: 'High',
+      rationale:
+        'Log4j2 JNDI remote code execution enables unauthenticated attackers to execute arbitrary code with maximum structural impact. Driven by confirmed CISA KEV active exploitation in the wild and a 97.4% EPSS probability, this vulnerability demands instant mitigation across both internet-facing and internal VPC application tiers.',
+      risk_factors: [
+        'Confirmed active exploitation in the wild (CISA KEV listed)',
+        'Catastrophic structural impact (CVSS 10.0 Critical)',
+        'High empirical weaponization probability (EPSS 97.4%)',
+      ],
+      recommended_action:
+        'Upgrade Apache Log4j dependencies to version 2.17.1 or apply JVM parameter -Dlog4j2.formatMsgNoLookups=true across all services.',
+      recommendation_source: 'bedrock_synthesis',
+      recommendation_is_verified: false,
+      authoritative_directive:
+        'For all affected software assets for which updates exist, the only acceptable remediation actions are: 1) Apply updates; OR 2) remove affected assets from agency networks. Temporary mitigations using one of the measures provided at https://www.cisa.gov/uscert/ed-22-02-apache-log4j-recommended-mitigation-measures are only acceptable until updates are available.',
+      authoritative_directive_source: 'cisa_kev',
+      authoritative_directive_url:
+        'https://www.cisa.gov/uscert/ed-22-02-apache-log4j-recommended-mitigation-measures',
+      confidence: 0.94,
+      confidence_is_calibrated: false,
+      confidence_explanation:
+        'Model-derived Strands Decider 2B confidence score (uncalibrated peak probability distribution over priority classes).',
+      evidence_limitations: [
+        'Extrapolated target patch version "2.17.1" is not confirmed in upstream NVD telemetry or affected CPE ranges; verify against vendor advisory.',
+        'Extrapolated CLI command syntax ("zip -q -d...", JVM parameters) cannot be verified from NVD or CISA KEV structured telemetry.',
+        'Stage 2 operational recommendations are synthesized by AI and have not been independently fact-checked against vendor release registries; operators must validate patch targets before deployment.',
+      ],
+      engine: 'dual-ai',
+      decider_model_id: 'StrandsAgents/strands-decider-2B-qwen3.5-v1-2610',
+      bedrock_model_id: 'au.anthropic.claude-sonnet-4-6',
+      decider_status: 'success',
+      bedrock_status: 'success',
+      decided_at: '2026-10-17T12:00:00.000Z',
+    },
     rationale:
       'Log4j2 JNDI remote code execution enables unauthenticated attackers to execute arbitrary code with maximum structural impact. Driven by confirmed CISA KEV active exploitation in the wild and a 97.4% EPSS probability, this vulnerability demands instant mitigation across both internet-facing and internal VPC application tiers.',
     remediationSteps: [

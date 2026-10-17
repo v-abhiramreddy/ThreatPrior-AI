@@ -1,11 +1,13 @@
 import React from 'react';
+import type { DataMode } from '../types';
 
 interface HeaderProps {
   currentTab: 'analyze' | 'history';
   onSelectTab: (tab: 'analyze' | 'history') => void;
+  dataMode?: DataMode;
 }
 
-export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab }) => {
+export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab, dataMode = 'ready' }) => {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-surface-container-lowest/90 backdrop-blur-md border-b border-surface-container-high/50">
       <div className="h-14 w-full px-margin flex items-center justify-between">
@@ -60,14 +62,49 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab }) => {
 
         {/* Right: Telemetry pill & Actions */}
         <div className="flex items-center gap-space-md">
-          {/* Explicit DEMO DATA MODE pill */}
+          {/* Dynamic DATA MODE indicator pill */}
           <div
             id="demo-mode-indicator"
-            className="flex items-center gap-space-xs px-space-sm py-1 rounded-lg bg-surface-container-low font-label-sm text-label-sm border border-secondary/20"
-            title="All scores, feeds, and recommendations operate on static demo fixtures"
+            data-mode={dataMode}
+            className={`flex items-center gap-space-xs px-space-sm py-1 rounded-lg font-label-sm text-label-sm border transition-all ${
+              dataMode === 'live'
+                ? 'bg-secondary/10 border-secondary/40 text-secondary'
+                : dataMode === 'demo'
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                : dataMode === 'analyzing'
+                ? 'bg-primary/10 border-primary/40 text-primary'
+                : 'bg-surface-container-low border-outline-variant/30 text-on-surface-variant'
+            }`}
+            title={
+              dataMode === 'live'
+                ? 'Live intelligence feed active from upstream NVD, CISA KEV & EPSS sources'
+                : dataMode === 'demo'
+                ? 'Static offline demo fixture loaded for evaluation'
+                : dataMode === 'analyzing'
+                ? 'Live AI triage and threat telemetry ingestion in progress'
+                : 'Threat intelligence pipeline ready — select or enter a CVE to analyze'
+            }
           >
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-secondary animate-pulse" />
-            <span className="text-secondary uppercase tracking-wider font-code-sm font-semibold">Demo Data Mode</span>
+            <span
+              className={`inline-block w-1.5 h-1.5 rounded-full ${
+                dataMode === 'live'
+                  ? 'bg-secondary animate-pulse'
+                  : dataMode === 'demo'
+                  ? 'bg-amber-400'
+                  : dataMode === 'analyzing'
+                  ? 'bg-primary animate-ping'
+                  : 'bg-outline'
+              }`}
+            />
+            <span className="uppercase tracking-wider font-code-sm font-semibold">
+              {dataMode === 'live'
+                ? 'Live Intelligence'
+                : dataMode === 'demo'
+                ? 'Offline Demo'
+                : dataMode === 'analyzing'
+                ? 'Analyzing'
+                : 'Ready to Analyze'}
+            </span>
           </div>
 
           <div className="hidden md:flex items-center gap-space-xs px-space-sm py-1 rounded-lg bg-surface-container-low text-on-surface-variant font-code-sm text-code-sm">

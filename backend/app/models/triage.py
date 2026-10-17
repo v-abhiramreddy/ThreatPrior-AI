@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.enums import OverallStatus
 from app.models.schemas import NormalizedVulnerability, Provenance
@@ -71,6 +71,41 @@ class RiskValidationResult(BaseModel):
     )
 
 
+class Stage2BedrockOutput(BaseModel):
+    """Strict schema for Amazon Bedrock Stage 2 structured JSON output."""
+
+    priority: Optional[TriagePriority] = Field(
+        default=None,
+        description="Stage 2 output priority (must match Stage 1 Decider priority)",
+    )
+    rationale: str = Field(
+        ...,
+        min_length=1,
+        description="Concise rationale strictly grounded in supplied evidence telemetry",
+    )
+    risk_factors: List[str] = Field(
+        default_factory=list,
+        description="Specific evidence-based risk factors identified during evaluation",
+    )
+    recommended_action: str = Field(
+        ...,
+        min_length=1,
+        description="Specific, actionable next operational recommendation",
+    )
+    evidence_limitations: List[str] = Field(
+        default_factory=list,
+        description="Explicitly identified evidence gaps or telemetry limitations",
+    )
+
+    @field_validator("rationale", "recommended_action")
+    @classmethod
+    def validate_non_empty_str(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("String value cannot be empty or whitespace only.")
+        return stripped
+
+
 class TriageDecision(BaseModel):
     """Structured decision output produced by the genuine dual-model AI or deterministic baseline decision engine."""
 
@@ -101,6 +136,18 @@ class TriageDecision(BaseModel):
     recommendation_is_verified: bool = Field(
         default=False,
         description="Whether the recommendation originates directly from an authoritative verified source (e.g. CISA BOD directive)",
+    )
+    authoritative_directive: Optional[str] = Field(
+        default=None,
+        description="Exact authoritative remediation directive from official sources (e.g. CISA BOD directive in KEV), retained separately from AI synthesis",
+    )
+    authoritative_directive_source: Optional[str] = Field(
+        default=None,
+        description="Attributable origin of the authoritative directive (e.g. 'cisa_kev')",
+    )
+    authoritative_directive_url: Optional[str] = Field(
+        default=None,
+        description="Reference URL for the authoritative directive if available in evidence",
     )
     confidence: float = Field(
         ...,
