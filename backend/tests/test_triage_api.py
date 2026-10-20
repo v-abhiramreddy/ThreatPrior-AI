@@ -20,7 +20,7 @@ from tests.conftest import (
 def create_mock_decider(priority: str = "Critical", confidence: float = 0.96) -> StrandsDeciderClient:
     mock_engine = MagicMock()
     mock_engine.ask.return_value = {
-        "model": "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
+        "model": "strands-decider-2b",
         "answers": {
             "priority": {
                 "type": "choice",
@@ -74,7 +74,7 @@ async def test_triage_api_returns_dual_ai_decision(monkeypatch):
             decision = data["decision"]
             assert decision["priority"] == "Critical"
             assert decision["engine"] == "dual-ai"
-            assert decision["decider_model_id"] == "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610"
+            assert decision["decider_model_id"] == "strands-decider-2b"
             assert decision["bedrock_model_id"] == settings.bedrock_model_id
             assert decision["decider_status"] == "success"
             assert decision["bedrock_status"] == "success"
@@ -124,7 +124,7 @@ async def test_triage_api_decider_only_degraded_mode(monkeypatch):
             decision = data["decision"]
 
             assert decision["engine"] == "decider-only"
-            assert decision["decider_model_id"] == "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610"
+            assert decision["decider_model_id"] == "strands-decider-2b"
             assert decision["bedrock_model_id"] is None
             assert decision["decider_status"] == "success"
             assert decision["bedrock_status"] == "failed"

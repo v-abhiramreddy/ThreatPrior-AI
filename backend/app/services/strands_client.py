@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -479,7 +480,7 @@ class StrandsDeciderClient:
                 data = raw_result.dict()
             else:
                 data = raw_result
-            return self._parse_decider_response(data)
+            return self._parse_decider_response(data, is_local=True)
         except asyncio.TimeoutError as e:
             raise StrandsDeciderTimeoutError(
                 f"Local Strands Decider inference timed out after {self.timeout_seconds}s"
@@ -514,7 +515,7 @@ class StrandsDeciderClient:
 
         raise StrandsDeciderValidationError("Injected Strands Decider mock did not produce a valid response.")
 
-    def _parse_decider_response(self, data: Dict[str, Any]) -> DeciderEvaluation:
+    def _parse_decider_response(self, data: Dict[str, Any], is_local: bool = False) -> DeciderEvaluation:
         """Validate and parse official Strands Decider response payload."""
         answers = data.get("answers", {})
         if not answers or not isinstance(answers, dict):
@@ -568,14 +569,23 @@ class StrandsDeciderClient:
             noul_val = 0.0
         requires_emergency = noul_val >= 0.50
 
-        # Checkpoint Provenance:
-        # SystemOneResponse.model reports package/implementation identifier (e.g. "strands-decider-0.1.0" or "strands-decider-2B").
-        # Configuration checkpoint ID (e.g. "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610") represents the actual trained model weights.
+        # Model & Checkpoint Provenance:
+        # In local in-process mode (load_engine), SystemOneResponse.model reports the library
+        # package version string (e.g. "strands-decider-0.1.0" or generic "strands-decider")
+        # rather than the model/checkpoint loaded. In that case, report the actual configured
+        # local model identifier (self.model_id).
+        # In remote mode, the remote HTTP service returns the actual served API model alias
+        # (e.g. "strands-decider-2b"), which is preserved and reported directly.
         raw_model = str(data.get("model", "")).strip()
-        if not raw_model or raw_model.startswith("strands-decider-"):
-            reported_model_id = self.model_id
+        if is_local:
+            is_package_version = (
+                not raw_model
+                or raw_model == "strands-decider"
+                or bool(re.match(r"^strands-decider-\d+\.\d+", raw_model, re.IGNORECASE))
+            )
+            reported_model_id = self.model_id if is_package_version else raw_model
         else:
-            reported_model_id = raw_model
+            reported_model_id = raw_model or self.model_id
 
         return DeciderEvaluation(
             priority=priority,

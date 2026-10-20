@@ -59,8 +59,8 @@ class Settings(BaseSettings):
         ),
     )
     strands_decider_model_id: str = Field(
-        default="StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
-        description="Strands Decider 2B model checkpoint ID",
+        default="strands-decider-2b",
+        description="Strands Decider 2B model identifier (e.g. 'strands-decider-2b' for remote API, or local checkpoint path)",
     )
     strands_decider_url: Optional[str] = Field(
         default="http://127.0.0.1:8080",

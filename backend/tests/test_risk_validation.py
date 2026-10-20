@@ -269,7 +269,7 @@ def test_8_api_serialization_of_risk_validation():
         confidence_explanation="Normalized max-probability distribution concentration; uncalibrated.",
         evidence_limitations=[],
         engine=DecisionEngineType.DECIDER_ONLY,
-        decider_model_id="StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
+        decider_model_id="strands-decider-2b",
         bedrock_model_id=None,
         decider_status=ModelInvocationStatus.SUCCESS,
         bedrock_status=ModelInvocationStatus.FAILED,
@@ -332,7 +332,7 @@ async def test_9_decider_only_and_baseline_modes_retain_risk_validation():
         confidence_is_calibrated=False,
         emergency_mitigation_noul=0.85,
         requires_emergency_mitigation=True,
-        model_id="StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
+        model_id="strands-decider-2b",
         status=ModelInvocationStatus.SUCCESS,
     )
     decider_decision = engine._create_decider_only_decision(

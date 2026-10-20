@@ -102,7 +102,7 @@ def create_mock_decider_client(
     priority: TriagePriority = TriagePriority.CRITICAL,
     confidence: float = 0.9467,
     probabilities: dict = None,
-    model_id: str = "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
+    model_id: str = "strands-decider-2b",
     requires_emergency: bool = True,
     should_fail: bool = False,
     fail_exception: Exception = None,
@@ -139,7 +139,7 @@ async def test_genuine_dual_model_invocation_succeeds():
     decider = create_mock_decider_client(
         priority=TriagePriority.CRITICAL,
         confidence=0.9467,
-        model_id="StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
+        model_id="strands-decider-2b",
     )
 
     mock_bedrock = MagicMock()
@@ -167,7 +167,7 @@ async def test_genuine_dual_model_invocation_succeeds():
     assert isinstance(decision, TriageDecision)
     assert decision.engine == DecisionEngineType.DUAL_AI
     assert decision.priority == TriagePriority.CRITICAL
-    assert decision.decider_model_id == "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610"
+    assert decision.decider_model_id == "strands-decider-2b"
     assert decision.bedrock_model_id == "amazon.nova-lite-v1:0"
     assert decision.decider_status == ModelInvocationStatus.SUCCESS
     assert decision.confidence == 0.9467
@@ -226,7 +226,7 @@ async def test_bedrock_failure_after_decider_success_returns_decider_only():
     decider = create_mock_decider_client(
         priority=TriagePriority.CRITICAL,
         confidence=0.95,
-        model_id="StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
+        model_id="strands-decider-2b",
     )
 
     mock_bedrock = MagicMock()
@@ -247,7 +247,7 @@ async def test_bedrock_failure_after_decider_success_returns_decider_only():
     # Truthful degradation: decider-only
     assert decision.engine == DecisionEngineType.DECIDER_ONLY
     assert decision.priority == TriagePriority.CRITICAL
-    assert decision.decider_model_id == "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610"
+    assert decision.decider_model_id == "strands-decider-2b"
     assert decision.bedrock_model_id is None
     assert decision.decider_status == ModelInvocationStatus.SUCCESS
     assert decision.bedrock_status == ModelInvocationStatus.FAILED
@@ -425,7 +425,7 @@ async def test_claude_sonnet_model_switch_and_invocation():
     decider = create_mock_decider_client(
         priority=TriagePriority.CRITICAL,
         confidence=0.962,
-        model_id="StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
+        model_id="strands-decider-2b",
     )
     claude_model_id = "anthropic.claude-sonnet-4-6"
 
@@ -460,7 +460,7 @@ async def test_claude_sonnet_model_switch_and_invocation():
     assert decision.engine == DecisionEngineType.DUAL_AI
     assert decision.priority == TriagePriority.CRITICAL
     assert decision.bedrock_model_id == claude_model_id
-    assert decision.decider_model_id == "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610"
+    assert decision.decider_model_id == "strands-decider-2b"
     assert decision.decider_status == ModelInvocationStatus.SUCCESS
     assert decision.bedrock_status == ModelInvocationStatus.SUCCESS
     assert "Critical remote code execution vulnerability" in decision.rationale
@@ -719,7 +719,7 @@ async def test_decision_engine_sydney_profile_invocation():
     assert decision.engine == DecisionEngineType.DUAL_AI
     assert decision.priority == TriagePriority.CRITICAL
     assert decision.bedrock_model_id == sydney_model_id
-    assert decision.decider_model_id == "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610"
+    assert decision.decider_model_id == "strands-decider-2b"
     assert "Bedrock Sydney inference profile" in decision.rationale
 
 

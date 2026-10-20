@@ -106,7 +106,7 @@ async def test_remote_http_server_invocation():
     resp = create_sample_vuln()
 
     mock_response_payload = {
-        "model": "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
+        "model": "strands-decider-2b",
         "answers": {
             "priority": {
                 "type": "choice",
@@ -142,7 +142,7 @@ async def test_remote_http_server_invocation():
         assert evaluation.confidence_is_calibrated is False
         assert evaluation.requires_emergency_mitigation is True
         assert evaluation.emergency_mitigation_noul == 0.98
-        assert evaluation.model_id == "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610"
+        assert evaluation.model_id == "strands-decider-2b"
         assert evaluation.status == ModelInvocationStatus.SUCCESS
 
 
@@ -184,7 +184,7 @@ def test_deterministic_parsing_priority_distribution_inconsistency_cases():
 
     # Case A: Critical
     payload_crit = {
-        "model": "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
+        "model": "strands-decider-2b",
         "answers": {
             "priority": {
                 "type": "choice",
@@ -212,7 +212,7 @@ def test_deterministic_parsing_priority_distribution_inconsistency_cases():
 
     # Case B: High
     payload_high = {
-        "model": "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
+        "model": "strands-decider-2b",
         "answers": {
             "priority": {
                 "type": "choice",
@@ -287,11 +287,17 @@ async def test_local_execution_success_and_truthful_provenance():
         assert isinstance(evaluation, DeciderEvaluation)
         assert evaluation.priority == TriagePriority.CRITICAL
         # Truthful provenance: Configured checkpoint is reported, NOT package version identifier
-        assert evaluation.model_id == "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610"
+        assert evaluation.model_id == "strands-decider-2b"
         assert evaluation.confidence == pytest.approx(0.7526, abs=0.001)
         assert evaluation.requires_emergency_mitigation is True
         assert evaluation.emergency_mitigation_noul == 0.6872
         assert evaluation.priority_probabilities["Critical"] == 0.8144
+
+        # Also verify that when local mode is configured with a distinct local checkpoint/path,
+        # it truthfully reports that local identifier instead of package version or remote alias
+        custom_client = StrandsDeciderClient(mode="local", model_id="local-checkpoint-qwen3.5-2b")
+        custom_eval = await custom_client.evaluate(resp)
+        assert custom_eval.model_id == "local-checkpoint-qwen3.5-2b"
 
 
 @pytest.mark.asyncio
@@ -424,8 +430,8 @@ async def test_remote_server_health_check_success():
 
     mock_health_payload = {
         "status": "ok",
-        "model": "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
-        "checkpoint": "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
+        "model": "strands-decider-2b",
+        "checkpoint": "strands-decider-2b",
         "base_model": "Qwen/Qwen2.5-0.5B",
         "device": "cuda:0",
         "temperature": 1.0,
@@ -440,7 +446,7 @@ async def test_remote_server_health_check_success():
         health = await client.check_health()
         assert health["reachable"] is True
         assert health["status"] == "ok"
-        assert health["model"] == "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610"
+        assert health["model"] == "strands-decider-2b"
         assert health["device"] == "cuda:0"
 
 
@@ -502,7 +508,7 @@ async def test_remote_request_schema_payload_structure():
         return httpx.Response(
             status_code=200,
             json={
-                "model": "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
+                "model": "strands-decider-2b",
                 "answers": {
                     "priority": {
                         "choice": "Critical",
@@ -547,7 +553,7 @@ async def test_remote_request_schema_payload_structure():
 def test_parse_official_response_with_noul_probabilities():
     client = StrandsDeciderClient()
     payload = {
-        "model": "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
+        "model": "strands-decider-2b",
         "answers": {
             "priority": {
                 "choice": "High",
@@ -678,7 +684,7 @@ def test_check_model_download_allowed_blocks_unopted_download():
     with unittest.mock.patch("pathlib.Path.exists", return_value=False):
         with unittest.mock.patch("huggingface_hub.try_to_load_from_cache", return_value=None, create=True):
             with pytest.raises(StrandsDeciderUnavailableError) as exc:
-                check_model_download_allowed("StrandsAgents/strands-decider-2B-qwen3.5-v1-2610", allow_download=False)
+                check_model_download_allowed("strands-decider-2b", allow_download=False)
             assert "ALLOW_LOCAL_MODEL_DOWNLOAD=false" in exc.value.message
 
 

@@ -32,7 +32,7 @@ def test_confidence_semantics_uncalibrated_peakedness():
     # 4 choices with p_max = 0.70: (4 * 0.70 - 1) / 3 = 1.8 / 3 = 0.60
     probs = {"Critical": 0.70, "High": 0.20, "Medium": 0.05, "Low": 0.05}
     payload = {
-        "model": "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
+        "model": "strands-decider-2b",
         "answers": {
             "priority": {
                 "type": "choice",
@@ -64,7 +64,7 @@ def test_priority_inconsistency_parsing_both_distributions():
 
     # Direct test distribution
     payload_direct = {
-        "model": "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
+        "model": "strands-decider-2b",
         "answers": {
             "priority": {
                 "type": "choice",
@@ -87,7 +87,7 @@ def test_priority_inconsistency_parsing_both_distributions():
 
     # Live API distribution
     payload_live = {
-        "model": "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
+        "model": "strands-decider-2b",
         "answers": {
             "priority": {
                 "type": "choice",

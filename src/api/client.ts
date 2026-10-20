@@ -409,8 +409,29 @@ export function mapTriageToCveData(res: TriageApiResponse): CveData {
       break;
   }
 
+  const deciderStatus = decision.decider_status ?? (decision as any).deciderStatus;
+  const bedrockStatus = decision.bedrock_status ?? (decision as any).bedrockStatus;
+  const rawFallbackReason = decision.fallback_reason ?? (decision as any).fallbackReason ?? null;
+
+  // Resolve engine truthfully based on decision property, top-level response, and stage statuses
+  let engine = decision.engine || (res as any).engine;
+  if (!engine) {
+    if (deciderStatus === 'success' && bedrockStatus === 'success') {
+      engine = 'dual-ai';
+    } else if (deciderStatus === 'success') {
+      engine = 'decider-only';
+    } else if (bedrockStatus === 'success') {
+      engine = 'bedrock-only';
+    } else if (rawFallbackReason) {
+      engine = 'baseline';
+    }
+  }
+
+  // When both AI stages succeed, fallback is not active
+  const fallbackReason = (deciderStatus === 'success' && bedrockStatus === 'success') ? null : rawFallbackReason;
+
   // Inject AI recommended action into Step 1 of remediation steps
-  const isAiEngine = decision.engine === 'dual-ai' || decision.engine === 'ai' || decision.engine === 'decider-only';
+  const isAiEngine = engine === 'dual-ai' || engine === 'ai' || engine === 'decider-only' || engine === 'bedrock-only';
   const updatedRemediationSteps: RemediationStep[] = [
     {
       step: 1,
@@ -430,24 +451,24 @@ export function mapTriageToCveData(res: TriageApiResponse): CveData {
     rationale: decision.rationale,
     remediationSteps: updatedRemediationSteps,
     decision,
-    engine: decision.engine,
+    engine,
     confidence: decision.confidence,
-    confidenceExplanation: decision.confidence_explanation,
-    confidenceIsCalibrated: decision.confidence_is_calibrated,
-    recommendationSource: decision.recommendation_source,
-    recommendationUrl: decision.recommendation_url,
-    recommendationIsVerified: decision.recommendation_is_verified,
-    authoritativeDirective: decision.authoritative_directive,
-    authoritativeDirectiveSource: decision.authoritative_directive_source,
-    authoritativeDirectiveUrl: decision.authoritative_directive_url,
-    riskFactors: decision.risk_factors,
-    evidenceLimitations: decision.evidence_limitations,
-    modelId: decision.model_id,
-    deciderModelId: decision.decider_model_id,
-    bedrockModelId: decision.bedrock_model_id,
-    deciderStatus: decision.decider_status,
-    bedrockStatus: decision.bedrock_status,
-    fallbackReason: decision.fallback_reason,
-    riskValidation: decision.risk_validation || res.risk_validation || null,
+    confidenceExplanation: decision.confidence_explanation ?? (decision as any).confidenceExplanation,
+    confidenceIsCalibrated: decision.confidence_is_calibrated ?? (decision as any).confidenceIsCalibrated,
+    recommendationSource: decision.recommendation_source ?? (decision as any).recommendationSource,
+    recommendationUrl: decision.recommendation_url ?? (decision as any).recommendationUrl,
+    recommendationIsVerified: decision.recommendation_is_verified ?? (decision as any).recommendationIsVerified,
+    authoritativeDirective: decision.authoritative_directive ?? (decision as any).authoritativeDirective,
+    authoritativeDirectiveSource: decision.authoritative_directive_source ?? (decision as any).authoritativeDirectiveSource,
+    authoritativeDirectiveUrl: decision.authoritative_directive_url ?? (decision as any).authoritativeDirectiveUrl,
+    riskFactors: decision.risk_factors ?? (decision as any).riskFactors ?? [],
+    evidenceLimitations: decision.evidence_limitations ?? (decision as any).evidenceLimitations ?? [],
+    modelId: decision.model_id ?? (decision as any).modelId,
+    deciderModelId: decision.decider_model_id ?? (decision as any).deciderModelId,
+    bedrockModelId: decision.bedrock_model_id ?? (decision as any).bedrockModelId,
+    deciderStatus,
+    bedrockStatus,
+    fallbackReason,
+    riskValidation: decision.risk_validation || res.risk_validation || (decision as any).riskValidation || (res as any).riskValidation || null,
   };
 }

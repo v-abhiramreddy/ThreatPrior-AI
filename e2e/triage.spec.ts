@@ -35,7 +35,7 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
               'EPSS score is a 30-day empirical forecast as of 2026-10-15, not proof of weaponization.',
             ],
             engine: 'dual-ai',
-            decider_model_id: 'StrandsAgents/strands-decider-2B-qwen3.5-v1-2610',
+            decider_model_id: 'strands-decider-2b',
             bedrock_model_id: 'amazon.nova-lite-v1:0',
             decider_status: 'success',
             bedrock_status: 'success',
@@ -114,7 +114,7 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
     await expect(page.locator('#triage-title')).toContainText('Dual-Model AI Triage Decision');
     await expect(page.locator('#engine-badge')).toContainText('Strands Decider 2B + Bedrock');
     await expect(page.locator('#engine-subtitle')).toContainText('98.0%');
-    await expect(page.locator('#engine-subtitle')).toContainText('StrandsAgents/strands-decider-2B-qwen3.5-v1-2610');
+    await expect(page.locator('#engine-subtitle')).toContainText('strands-decider-2b');
     await expect(page.locator('#engine-subtitle')).toContainText('amazon.nova-lite-v1:0');
 
     // Verify Model Provenance Bar
@@ -175,7 +175,7 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
               'Decision rationale represents Strands Decider 2B System-1 fast evaluation only.',
             ],
             engine: 'decider-only',
-            decider_model_id: 'StrandsAgents/strands-decider-2B-qwen3.5-v1-2610',
+            decider_model_id: 'strands-decider-2b',
             bedrock_model_id: null,
             decider_status: 'success',
             bedrock_status: 'failed',
@@ -380,7 +380,7 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
             confidence_explanation: 'Model-derived Strands Decider 2B confidence score: 98.0%.',
             evidence_limitations: [],
             engine: 'decider-only',
-            decider_model_id: 'StrandsAgents/strands-decider-2B-qwen3.5-v1-2610',
+            decider_model_id: 'strands-decider-2b',
             decider_status: 'success',
             bedrock_status: 'failed',
             decided_at: '2026-10-16T14:00:01.000Z',
@@ -462,7 +462,7 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
             confidence_explanation: 'Model-derived Strands Decider 2B confidence score: 58.0%.',
             evidence_limitations: [],
             engine: 'decider-only',
-            decider_model_id: 'StrandsAgents/strands-decider-2B-qwen3.5-v1-2610',
+            decider_model_id: 'strands-decider-2b',
             decider_status: 'success',
             bedrock_status: 'failed',
             decided_at: '2026-10-16T14:00:01.000Z',
@@ -619,7 +619,7 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
             confidence_explanation: 'Model-derived confidence.',
             evidence_limitations: [],
             engine: 'dual-ai',
-            decider_model_id: 'StrandsAgents/strands-decider-2B-qwen3.5-v1-2610',
+            decider_model_id: 'strands-decider-2b',
             bedrock_model_id: null,
             decider_status: 'success',
             bedrock_status: 'unavailable',
@@ -684,7 +684,7 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
               'Stage 2 operational recommendations are synthesized by AI and have not been independently fact-checked against vendor release registries; operators must validate patch targets before deployment.',
             ],
             engine: 'dual-ai',
-            decider_model_id: 'StrandsAgents/strands-decider-2B-qwen3.5-v1-2610',
+            decider_model_id: 'strands-decider-2b',
             bedrock_model_id: 'au.anthropic.claude-sonnet-4-6',
             decider_status: 'success',
             bedrock_status: 'success',
