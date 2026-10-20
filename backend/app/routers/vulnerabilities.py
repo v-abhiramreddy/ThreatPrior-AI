@@ -40,4 +40,10 @@ async def get_vulnerability(cve_id: str):
             content=response.model_dump(mode="json"),
         )
 
+    if response.status == OverallStatus.ERROR and response.normalized is None:
+        return JSONResponse(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            content=response.model_dump(mode="json"),
+        )
+
     return response

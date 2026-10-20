@@ -905,3 +905,60 @@ async def test_stage2_cannot_override_stage1_priority():
     assert decision.priority != TriagePriority.LOW
 
 
+def test_diagnose_bedrock_error_categories():
+    """Verify safe diagnostic messages for Bedrock error conditions without credential leaks."""
+    import botocore.exceptions
+    from app.services.decision_engine import diagnose_bedrock_error
+
+    # 1. Expired SSO Token
+    sso_err = botocore.exceptions.ClientError(
+        {"Error": {"Code": "ExpiredTokenException", "Message": "The security token included in the request is expired"}},
+        "Converse",
+    )
+    msg = diagnose_bedrock_error(sso_err, "amazon.nova-lite-v1:0", "us-east-1")
+    assert "aws sso login" in msg
+    assert "expired" in msg.lower()
+
+    # 2. Access Denied
+    denied_err = botocore.exceptions.ClientError(
+        {"Error": {"Code": "AccessDeniedException", "Message": "User is not authorized to perform: bedrock:Converse"}},
+        "Converse",
+    )
+    msg = diagnose_bedrock_error(denied_err, "amazon.nova-lite-v1:0", "us-east-1")
+    assert "IAM Access Denied" in msg
+    assert "bedrock:InvokeModel" in msg
+
+    # 3. Model Not Enabled / Not Found
+    model_err = botocore.exceptions.ClientError(
+        {"Error": {"Code": "ResourceNotFoundException", "Message": "The requested model was not found or access is not enabled"}},
+        "Converse",
+    )
+    msg = diagnose_bedrock_error(model_err, "anthropic.claude-sonnet-4-6", "us-east-1")
+    assert "model access has not been granted" in msg.lower() or "unavailable" in msg.lower()
+    assert "AWS Bedrock Console" in msg
+
+    # 4. Throttling
+    throttle_err = botocore.exceptions.ClientError(
+        {"Error": {"Code": "ThrottlingException", "Message": "Rate limit exceeded"}},
+        "Converse",
+    )
+    msg = diagnose_bedrock_error(throttle_err, "amazon.nova-lite-v1:0", "us-east-1")
+    assert "rate limit or concurrency quota exceeded" in msg.lower()
+    assert "exponential backoff" in msg
+
+    # 5. Network Connection Failure
+    conn_err = botocore.exceptions.EndpointConnectionError(endpoint_url="https://bedrock-runtime.us-east-1.amazonaws.com")
+    msg = diagnose_bedrock_error(conn_err, "amazon.nova-lite-v1:0", "us-east-1")
+    assert "Unable to reach AWS Bedrock endpoint" in msg
+
+    # 6. Missing Credentials
+    cred_err = botocore.exceptions.NoCredentialsError()
+    msg = diagnose_bedrock_error(cred_err, "amazon.nova-lite-v1:0", "us-east-1")
+    assert "No AWS credentials discovered" in msg
+
+    # 7. Credential Redaction Guard
+    leak_err = Exception("Failed request with AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY and key=SecretValue123456")
+    msg = diagnose_bedrock_error(leak_err, "amazon.nova-lite-v1:0", "us-east-1")
+    assert "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" not in msg
+    assert "SecretValue123456" not in msg
+    assert "[REDACTED]" in msg

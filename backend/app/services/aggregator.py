@@ -102,6 +102,23 @@ class VulnerabilityAggregator:
                     errors=["No record of this CVE identifier was found in NVD, CISA KEV, or EPSS."],
                 )
 
+            # Check for insufficient evidence when registries have no record but CISA was unavailable
+            nvd_and_epss_not_found = (
+                nvd_res.status == SourceStatus.NOT_FOUND
+                and epss_res.status == SourceStatus.NOT_FOUND
+            )
+            cisa_unavailable = cisa_res.status in (
+                SourceStatus.FAILED,
+                SourceStatus.TIMEOUT,
+                SourceStatus.RATE_LIMITED,
+            )
+
+            if nvd_and_epss_not_found and cisa_unavailable:
+                errors.append(
+                    f"No record found in NVD or EPSS for {normalized_cve}, but CISA KEV check failed. "
+                    "Evidence is insufficient to confirm absence or evaluate risk."
+                )
+
             # Determine overall status
             any_success = (
                 nvd_res.status == SourceStatus.AVAILABLE

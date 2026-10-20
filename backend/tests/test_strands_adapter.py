@@ -1,4 +1,5 @@
 import asyncio
+import sys
 import unittest.mock
 from unittest.mock import MagicMock
 import httpx
@@ -669,3 +670,61 @@ async def test_remote_server_http_500_retries_and_fails():
             await client.evaluate(resp)
         assert "HTTP 500" in exc.value.message or "500" in str(exc.value.status_code)
 
+
+# 14. Local mode blocks automatic download when allow_local_model_download=False
+def test_check_model_download_allowed_blocks_unopted_download():
+    from app.services.strands_client import check_model_download_allowed
+
+    with unittest.mock.patch("pathlib.Path.exists", return_value=False):
+        with unittest.mock.patch("huggingface_hub.try_to_load_from_cache", return_value=None, create=True):
+            with pytest.raises(StrandsDeciderUnavailableError) as exc:
+                check_model_download_allowed("StrandsAgents/strands-decider-2B-qwen3.5-v1-2610", allow_download=False)
+            assert "ALLOW_LOCAL_MODEL_DOWNLOAD=false" in exc.value.message
+
+
+def test_check_host_resources_blocks_constrained_memory():
+    from app.services.strands_client import check_host_resources
+
+    mock_mem = MagicMock()
+    mock_mem.available = 1024 * 1024 * 1024 * 0.5  # 512MB available (e.g. Render free tier)
+    with unittest.mock.patch("psutil.virtual_memory", return_value=mock_mem):
+        with pytest.raises(StrandsDeciderUnavailableError) as exc:
+            check_host_resources()
+        assert "Constrained host memory" in exc.value.message
+
+
+# 15. Auto mode falls back to local when remote server fails
+@pytest.mark.asyncio
+async def test_auto_mode_falls_back_to_local_when_remote_fails():
+    clear_local_engine_cache()
+    mock_server_url = "http://127.0.0.1:8080"
+    mock_engine = MagicMock()
+    mock_engine.ask.return_value = {
+        "model": "strands-decider-0.1.0",
+        "answers": {
+            "priority": {
+                "type": "choice",
+                "choice": "Critical",
+                "probabilities": {"Critical": 0.9, "High": 0.08, "Medium": 0.01, "Low": 0.01},
+                "confidence": 0.85,
+            },
+            "requires_emergency_mitigation": {"type": "noul", "noul": 0.92},
+        },
+    }
+
+    with unittest.mock.patch("strands_decider.infer.load_engine", return_value=mock_engine):
+        client = StrandsDeciderClient(
+            server_url=mock_server_url,
+            mode="auto",
+        )
+        resp = create_sample_vuln()
+
+        async with respx.mock(assert_all_called=True) as respx_mock:
+            # Remote connection refused
+            respx_mock.post(f"{mock_server_url}/v1/systemone").mock(
+                side_effect=httpx.ConnectError("Connection refused")
+            )
+
+            evaluation = await client.evaluate(resp)
+            assert evaluation.priority == TriagePriority.CRITICAL
+            assert evaluation.confidence == 0.85

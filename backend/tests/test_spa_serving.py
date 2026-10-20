@@ -92,3 +92,52 @@ async def test_backend_operates_when_dist_absent(tmp_path):
         assert res.status_code == 200
         assert res.json()["status"] == "healthy"
 
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "traversal_path",
+    [
+        "/..%2fbackend/.env.example",
+        "/..%2fbackend/requirements.txt",
+        "/..%5cbackend/requirements.txt",
+        "/%2e%2e%2fbackend/.env.example",
+        "/..%2f..%2fpackage.json",
+        "/%2e%2e%2f%2e%2e%2fREADME.md",
+        "/..%2f..%2f..%2fbackend%2fapp%2fmain.py",
+        "/..%5c..%5cbackend%5capp%5cmain.py",
+        "/%2e%2e%5cbackend%2fapp%2fmain.py",
+        "/..%2f.env",
+        "/..%2fbackend%2f.env",
+        "/etc/passwd",
+        "/C:/Windows/win.ini",
+        "/dist/../../backend/.env.example",
+    ],
+)
+async def test_spa_path_traversal_attempts_rejected(traversal_path: str):
+    """Verify that path traversal attempts are strictly rejected and never return backend or system files."""
+    dist_dir = get_dist_dir()
+    if not (dist_dir.exists() and (dist_dir / "index.html").exists()):
+        pytest.skip("dist/index.html does not exist in current environment")
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(traversal_path)
+        # Should be 404, never 200 containing file contents
+        assert response.status_code == 404
+        # Assert file contents are never leaked
+        assert "AWS_SECRET_ACCESS_KEY" not in response.text
+        assert "fastapi" not in response.text.lower() or "<!doctype html>" in response.text.lower()
+        assert "uvicorn" not in response.text.lower()
+        assert "ThreatPrior AI" not in response.text or "<!doctype html>" in response.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_spa_null_byte_injection_rejected():
+    """Verify that null-byte path injections are rejected with 404."""
+    dist_dir = get_dist_dir()
+    if not (dist_dir.exists() and (dist_dir / "index.html").exists()):
+        pytest.skip("dist/index.html does not exist in current environment")
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/index.html%00.txt")
+        assert response.status_code == 404
+

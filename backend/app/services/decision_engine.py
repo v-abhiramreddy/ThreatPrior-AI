@@ -67,6 +67,72 @@ Do not include any conversational preamble or markdown code blocks other than th
 """
 
 
+def diagnose_bedrock_error(e: Exception, model_id: str, region_name: str) -> str:
+    """Produce safe, actionable operational diagnostics for Bedrock errors without leaking secrets or tokens."""
+    error_code = ""
+    error_msg = str(e)
+    if isinstance(e, botocore.exceptions.ClientError):
+        err_dict = e.response.get("Error", {})
+        error_code = err_dict.get("Code", "")
+        error_msg = err_dict.get("Message", str(e))
+
+    code_tag = error_code or type(e).__name__
+
+    # 1. Expired SSO / STS token
+    if (
+        isinstance(e, (botocore.exceptions.SSOTokenLoadError, botocore.exceptions.UnauthorizedSSOTokenError))
+        or error_code in ("ExpiredToken", "ExpiredTokenException", "RequestExpired")
+        or "security token included in the request is expired" in error_msg.lower()
+    ):
+        return (
+            f"AWS session token expired [{code_tag}] for Bedrock in region '{region_name}'. "
+            "Reauthenticate with your configured AWS profile using 'aws sso login' or refresh AWS credentials."
+        )
+
+    # 2. Access Denied / IAM Authorization
+    if error_code in ("AccessDeniedException", "UnauthorizedException", "AccessDenied") or "accessdenied" in error_msg.lower():
+        return (
+            f"AWS IAM Access Denied [{code_tag}] for Bedrock model '{model_id}' in region '{region_name}'. "
+            "Ensure the active AWS identity has 'bedrock:InvokeModel' and 'bedrock:Converse' permissions."
+        )
+
+    # 3. Model access not granted or model ID not found
+    if (
+        error_code in ("ResourceNotFoundException", "ValidationException")
+        and any(k in error_msg.lower() for k in ("model", "access", "not found", "invalid model", "does not exist"))
+    ):
+        return (
+            f"Bedrock model '{model_id}' is unavailable [{code_tag}] in region '{region_name}' or model access has not been granted. "
+            "Enable model access in the AWS Bedrock Console or verify the configured inference profile."
+        )
+
+    # 4. Throttling / Rate limits
+    if error_code in ("ThrottlingException", "RequestLimitExceeded", "TooManyRequestsException"):
+        return (
+            f"AWS Bedrock rate limit or concurrency quota exceeded [{code_tag}] for model '{model_id}' in region '{region_name}'. "
+            "Request will be retried with exponential backoff."
+        )
+
+    # 5. Endpoint connection / transient network failure
+    if isinstance(e, (botocore.exceptions.EndpointConnectionError, botocore.exceptions.ConnectTimeoutError)):
+        return (
+            f"Unable to reach AWS Bedrock endpoint [{code_tag}] in region '{region_name}'. "
+            "Check internet connection, DNS resolution, and VPC egress routing."
+        )
+
+    # 6. Missing AWS credentials
+    if isinstance(e, botocore.exceptions.NoCredentialsError):
+        return (
+            f"No AWS credentials discovered [{code_tag}] for Bedrock in region '{region_name}'. "
+            "Configure AWS credentials via environment variables (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY), "
+            "AWS profile (~/.aws/credentials), or an attached IAM role."
+        )
+
+    # 7. Generic fallback with key scrubbing
+    safe_msg = re.sub(r"(?i)(key|secret|token|password)[=:]\s*[\w\-\/\+]{8,}", r"\1=[REDACTED]", error_msg)
+    return f"AWS Bedrock error [{code_tag}]: {safe_msg}"
+
+
 class DecisionEngine:
     """Truthful two-stage decision orchestrator:
 
@@ -275,6 +341,10 @@ class DecisionEngine:
         rationale_items = []
         if is_kev:
             rationale_items.append("Confirmed presence in CISA KEV catalog confirms real-world in-the-wild exploitation.")
+        elif prov.cisa_kev.status in (SourceStatus.FAILED, SourceStatus.TIMEOUT, SourceStatus.RATE_LIMITED):
+            rationale_items.append(
+                f"CISA KEV query status is {prov.cisa_kev.status.value}; unable to determine whether vulnerability is listed in KEV."
+            )
         else:
             rationale_items.append("No record in CISA KEV catalog (catalog absence is not proof of safety).")
         if cvss_score > 0:
@@ -725,7 +795,7 @@ class DecisionEngine:
                 if isinstance(e, botocore.exceptions.ClientError):
                     error_code = e.response.get("Error", {}).get("Code", "")
 
-                bedrock_error = f"AWS Bedrock error [{error_code or type(e).__name__}]: {str(e)}"
+                bedrock_error = diagnose_bedrock_error(e, self.model_id, self.region_name)
                 logger.warning(bedrock_error)
 
                 if error_code in ("ThrottlingException", "RequestLimitExceeded", "InternalServerException", "ModelNotReadyException") and attempt <= max_retries:

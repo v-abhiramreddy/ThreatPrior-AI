@@ -8,6 +8,7 @@ from app.main import app
 from app.config import settings
 from app.models.triage import ModelInvocationStatus, TriagePriority
 from app.services.decision_engine import decision_engine
+from app.services.cisa_client import cisa_client
 from app.services.strands_client import StrandsDeciderClient, StrandsDeciderUnavailableError
 from tests.conftest import (
     MOCK_CISA_CATALOG,
@@ -196,3 +197,101 @@ async def test_triage_api_unknown_cve_returns_404():
             assert response.status_code == 404
             data = response.json()
             assert data["status"] == "NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_triage_api_insufficient_evidence_when_cisa_fails():
+    """Verify that when NVD & EPSS report not found but CISA fails,
+
+    the API returns HTTP 502 (Bad Gateway) with engine='unavailable'
+    and NEVER returns a fake vulnerability or low-priority heuristic.
+    """
+    cisa_client._catalog_cache.clear()
+    cisa_client._last_refreshed = None
+
+    async with respx.mock(assert_all_called=False) as respx_mock:
+        # CISA fails (e.g. 403 Forbidden or network outage)
+        respx_mock.get(settings.cisa_kev_url).respond(status_code=403, text="Forbidden")
+        # NVD confirms no record
+        respx_mock.get(settings.nvd_api_base_url).respond(
+            status_code=200, json={"resultsPerPage": 0, "totalResults": 0, "vulnerabilities": []}
+        )
+        # EPSS confirms no record
+        respx_mock.get(settings.epss_api_url).respond(
+            status_code=200, json={"status": "OK", "total": 0, "data": []}
+        )
+
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/api/vulnerabilities/CVE-2099-99999/triage")
+            # Must be 502 Bad Gateway, NEVER 200 with fake Low priority
+            assert response.status_code == 502
+            data = response.json()
+
+            assert data["status"] == "ERROR"
+            assert data["engine"] == "unavailable"
+            assert "decision" not in data  # No fabricated decision
+            assert "detail" in data
+            assert "Insufficient evidence" in data["detail"]
+            assert "CISA KEV check failed" in data["detail"]
+
+            # Provenance must accurately reflect each source
+            assert data["provenance"]["nvd"]["status"] == "NOT_FOUND"
+            assert data["provenance"]["epss"]["status"] == "NOT_FOUND"
+            assert data["provenance"]["cisa_kev"]["status"] == "FAILED"
+            assert len(data["errors"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_triage_api_decider_unavailable_with_fallback_disabled(monkeypatch):
+    """When allow_fallback=False and Strands Decider fails, API returns HTTP 503."""
+    async with respx.mock(assert_all_called=False) as respx_mock:
+        respx_mock.get(settings.cisa_kev_url).respond(status_code=200, json=MOCK_CISA_CATALOG)
+        respx_mock.get(settings.nvd_api_base_url).respond(status_code=200, json=MOCK_NVD_LOG4SHELL)
+        respx_mock.get(settings.epss_api_url).respond(status_code=200, json=MOCK_EPSS_LOG4SHELL)
+
+        failing_decider = MagicMock()
+        failing_decider.evaluate.side_effect = StrandsDeciderUnavailableError(
+            "Strands Decider server connection refused on http://127.0.0.1:8080"
+        )
+        monkeypatch.setattr(decision_engine, "strands_client", failing_decider)
+        monkeypatch.setattr(decision_engine, "allow_fallback", False)
+
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/api/vulnerabilities/CVE-2021-44228/triage")
+            assert response.status_code == 503
+            data = response.json()
+            assert data["engine"] == "unavailable"
+            assert "Strands Decider" in data["detail"]
+
+
+@pytest.mark.asyncio
+async def test_triage_api_rate_limiting(monkeypatch):
+    """Verify that excessive triage requests receive HTTP 429 with Retry-After header."""
+    from app.routers.triage import triage_rate_limiter
+
+    triage_rate_limiter.clear()
+    monkeypatch.setattr(settings, "triage_rate_limit_per_minute", 2)
+
+    async with respx.mock(assert_all_called=False) as respx_mock:
+        respx_mock.get(settings.cisa_kev_url).respond(status_code=200, json=MOCK_CISA_CATALOG)
+        respx_mock.get(settings.nvd_api_base_url).respond(status_code=200, json=MOCK_NVD_LOG4SHELL)
+        respx_mock.get(settings.epss_api_url).respond(status_code=200, json=MOCK_EPSS_LOG4SHELL)
+
+        mock_decider = create_mock_decider(priority="Critical", confidence=0.96)
+        monkeypatch.setattr(decision_engine, "strands_client", mock_decider)
+        monkeypatch.setattr(decision_engine, "allow_fallback", True)
+
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            r1 = await client.get("/api/vulnerabilities/CVE-2021-44228/triage")
+            assert r1.status_code == 200
+
+            r2 = await client.get("/api/vulnerabilities/CVE-2021-44228/triage")
+            assert r2.status_code == 200
+
+            # 3rd request exceeds limit of 2/min
+            r3 = await client.get("/api/vulnerabilities/CVE-2021-44228/triage")
+            assert r3.status_code == 429
+            assert "Rate limit exceeded" in r3.json()["detail"]
+            assert "Retry-After" in r3.headers
+
+    triage_rate_limiter.clear()

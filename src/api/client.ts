@@ -9,13 +9,18 @@ import type {
 export class ApiError extends Error {
   status?: number;
   isOffline?: boolean;
+  isAborted?: boolean;
   errors?: string[];
 
-  constructor(message: string, options?: { status?: number; isOffline?: boolean; errors?: string[] }) {
+  constructor(
+    message: string,
+    options?: { status?: number; isOffline?: boolean; isAborted?: boolean; errors?: string[] }
+  ) {
     super(message);
     this.name = 'ApiError';
     this.status = options?.status;
     this.isOffline = options?.isOffline;
+    this.isAborted = options?.isAborted;
     this.errors = options?.errors;
   }
 }
@@ -44,11 +49,15 @@ export function getApiUrl(path: string): string {
 /**
  * Fetch aggregated vulnerability intelligence from the backend API.
  */
-export async function fetchVulnerability(cveId: string): Promise<VulnerabilityApiResponse> {
+export async function fetchVulnerability(
+  cveId: string,
+  options?: { signal?: AbortSignal }
+): Promise<VulnerabilityApiResponse> {
   const normalizedId = cveId.trim().toUpperCase();
 
   try {
     const response = await fetch(getApiUrl(`/api/vulnerabilities/${encodeURIComponent(normalizedId)}`), {
+      signal: options?.signal,
       headers: {
         Accept: 'application/json',
       },
@@ -80,6 +89,9 @@ export async function fetchVulnerability(cveId: string): Promise<VulnerabilityAp
     if (err instanceof ApiError) {
       throw err;
     }
+    if (err instanceof Error && (err.name === 'AbortError' || options?.signal?.aborted)) {
+      throw new ApiError('Request was aborted.', { isAborted: true });
+    }
     // Network errors (e.g. backend server not running / connection refused)
     throw new ApiError('Backend service is offline or unreachable.', { isOffline: true });
   }
@@ -88,11 +100,15 @@ export async function fetchVulnerability(cveId: string): Promise<VulnerabilityAp
 /**
  * Fetch AI triage decision along with aggregated threat intelligence from the backend API.
  */
-export async function fetchTriageDecision(cveId: string): Promise<TriageApiResponse> {
+export async function fetchTriageDecision(
+  cveId: string,
+  options?: { signal?: AbortSignal }
+): Promise<TriageApiResponse> {
   const normalizedId = cveId.trim().toUpperCase();
 
   try {
     const response = await fetch(getApiUrl(`/api/vulnerabilities/${encodeURIComponent(normalizedId)}/triage`), {
+      signal: options?.signal,
       headers: {
         Accept: 'application/json',
       },
@@ -108,6 +124,39 @@ export async function fetchTriageDecision(cveId: string): Promise<TriageApiRespo
       throw new ApiError(data.detail || `Invalid CVE identifier format: '${cveId}'`, { status: 400 });
     }
 
+    if (response.status === 404) {
+      const data = await response.json().catch(() => ({}));
+      if (data.status === 'not_found' || data.cve_id || data.detail) {
+        throw new ApiError(data.detail || `Vulnerability ${cveId} not found in NVD, CISA KEV, or EPSS.`, {
+          status: 404,
+          errors: data.errors,
+        });
+      }
+    }
+
+    if (response.status === 429) {
+      const data = await response.json().catch(() => ({}));
+      throw new ApiError(data.detail || 'Rate limit exceeded: maximum triage requests per minute reached.', {
+        status: 429,
+        errors: data.errors,
+      });
+    }
+
+    if (response.status === 502) {
+      const data = await response.json().catch(() => null);
+      if (data && (data.detail || data.cve_id || data.status)) {
+        throw new ApiError(
+          data.detail || `Insufficient vulnerability evidence to triage ${cveId}: Upstream intelligence sources unavailable.`,
+          {
+            status: 502,
+            errors: data.errors,
+          }
+        );
+      }
+      // Reverse proxy / Vite proxy returned 502 because backend service is offline
+      throw new ApiError('Backend service is offline or unreachable.', { isOffline: true, status: 502 });
+    }
+
     if (response.status === 503) {
       const data = await response.json().catch(() => ({}));
       throw new ApiError(data.detail || 'AI Decision Engine is temporarily unavailable.', {
@@ -116,83 +165,17 @@ export async function fetchTriageDecision(cveId: string): Promise<TriageApiRespo
       });
     }
 
-    // Fallback probe to base vulnerability endpoint (handles tests/mocks that only intercepted /api/vulnerabilities/${cveId})
-    const baseRes = await fetch(getApiUrl(`/api/vulnerabilities/${encodeURIComponent(normalizedId)}`), {
-      headers: { Accept: 'application/json' },
+    const data = await response.json().catch(() => ({}));
+    throw new ApiError(data.detail || `Backend returned error HTTP ${response.status}`, {
+      status: response.status,
+      errors: data.errors,
     });
-
-    if (baseRes.status === 400) {
-      const data = await baseRes.json().catch(() => ({}));
-      throw new ApiError(data.detail || `Invalid CVE identifier format: '${cveId}'`, { status: 400 });
-    }
-
-    if (baseRes.status === 404) {
-      const data = await baseRes.json().catch(() => ({}));
-      throw new ApiError(data.detail || `Vulnerability ${cveId} not found in any upstream intelligence source.`, {
-        status: 404,
-        errors: data.errors,
-      });
-    }
-
-    if (!baseRes.ok) {
-      const data = await baseRes.json().catch(() => ({}));
-      throw new ApiError(data.detail || `Backend returned error HTTP ${baseRes.status}`, {
-        status: baseRes.status,
-      });
-    }
-
-    const baseJson = (await baseRes.json()) as VulnerabilityApiResponse;
-    const cvss = baseJson.normalized?.cvss_score ?? 0;
-    const isKev = baseJson.normalized?.is_cisa_kev ?? false;
-    const priority = isKev && cvss >= 8.5 ? 'Critical' : isKev || cvss >= 7.0 ? 'High' : cvss >= 4.0 ? 'Medium' : 'Low';
-
-    return {
-      ...baseJson,
-      decision: {
-        priority,
-        rationale: 'Baseline triage heuristic generated for vulnerability record.',
-        risk_factors: isKev ? ['CISA KEV Listed in-the-wild exploitation'] : cvss >= 7.0 ? [`CVSS rated ${cvss.toFixed(1)}`] : [],
-        recommended_action: baseJson.normalized?.cisa_required_action || 'Review vendor security guidance.',
-        confidence: 0.9,
-        confidence_explanation: 'Synthesized via baseline heuristic engine.',
-        evidence_limitations: isKev ? [] : ['Unlisted in CISA KEV (absence is not proof of safety).'],
-        engine: 'baseline',
-        model_id: 'baseline-heuristic-v1',
-        decided_at: new Date().toISOString(),
-        risk_validation: {
-          model_priority: priority,
-          evidence_priority: priority,
-          risk_validation_status: 'aligned',
-          risk_factors: isKev ? ['CISA KEV Listed in-the-wild exploitation'] : cvss >= 7.0 ? [`CVSS rated ${cvss.toFixed(1)}`] : [],
-          validation_rules_version: '2026.1-policy',
-          validation_explanation: `Policy Aligned: Baseline heuristic '${priority}' priority matches deterministic policy rules.`,
-        },
-      },
-    };
-  } catch (err) {
+  } catch (err: unknown) {
     if (err instanceof ApiError) {
       throw err;
     }
-    // If the triage endpoint fetch failed because the base route was aborted (offline test) or mocked differently:
-    try {
-      const baseCheck = await fetch(getApiUrl(`/api/vulnerabilities/${encodeURIComponent(normalizedId)}`), {
-        headers: { Accept: 'application/json' },
-      });
-      if (baseCheck.status === 400) {
-        const data = await baseCheck.json().catch(() => ({}));
-        throw new ApiError(data.detail || `Invalid CVE identifier format: '${cveId}'`, { status: 400 });
-      }
-      if (baseCheck.status === 404) {
-        const data = await baseCheck.json().catch(() => ({}));
-        throw new ApiError(data.detail || `Vulnerability ${cveId} not found in any upstream intelligence source.`, {
-          status: 404,
-          errors: data.errors,
-        });
-      }
-    } catch (checkErr) {
-      if (checkErr instanceof ApiError) {
-        throw checkErr;
-      }
+    if (err instanceof Error && (err.name === 'AbortError' || options?.signal?.aborted)) {
+      throw new ApiError('Request was aborted.', { isAborted: true });
     }
     throw new ApiError('Backend service is offline or unreachable.', { isOffline: true });
   }
@@ -351,7 +334,7 @@ export function mapBackendToCveData(res: VulnerabilityApiResponse): CveData {
         abstract: norm?.description || nvd.error_message || 'NVD record telemetry.',
         evaluatedAgo: nvd.last_modified_date ? new Date(nvd.last_modified_date).toLocaleDateString() : (nvd.published_date ? new Date(nvd.published_date).toLocaleDateString() : 'N/A'),
         vectors: vectorPairs.length > 0 ? vectorPairs : [{ label: 'CVSS', value: norm?.cvss_score ? norm.cvss_score.toFixed(1) : 'N/A' }],
-        cpe: nvd.cpe_configurations.slice(0, 3).join('\n') || (norm?.affected_cpe_count ? `${norm.affected_cpe_count} affected product CPE configurations indexed.` : 'No CPE signatures published.'),
+        cpe: (nvd.cpe_configurations || []).slice(0, 3).join('\n') || (norm?.affected_cpe_count ? `${norm.affected_cpe_count} affected product CPE configurations indexed.` : 'No CPE signatures published.'),
       },
       cisa: {
         listedDate: cisa.date_added || (cisa.status === 'NOT_LISTED' ? 'Not in KEV' : 'Unavailable'),

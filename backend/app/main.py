@@ -35,12 +35,22 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware for local development and cross-origin access
+# CORS middleware configuration (avoids invalid wildcard + credentials combination)
+def get_cors_origins() -> list[str]:
+    raw = getattr(settings, "cors_allowed_origins", "").strip()
+    if not raw:
+        return ["http://localhost:5173", "http://127.0.0.1:5173"]
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
+cors_origins = get_cors_origins()
+is_wildcard = cors_origins == ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=cors_origins,
+    allow_credentials=not is_wildcard,
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -64,26 +74,51 @@ def get_dist_dir() -> Path:
 
 dist_dir = get_dist_dir()
 if dist_dir.exists() and (dist_dir / "index.html").exists():
-    logger.info(f"Serving production frontend build from {dist_dir}")
-    assets_dir = dist_dir / "assets"
-    if assets_dir.exists():
+    canonical_dist = dist_dir.resolve()
+    index_file = canonical_dist / "index.html"
+    logger.info(f"Serving production frontend build from {canonical_dist}")
+    assets_dir = canonical_dist / "assets"
+    if assets_dir.exists() and assets_dir.is_dir():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
     @app.get("/", include_in_schema=False)
     async def serve_root():
-        return FileResponse(dist_dir / "index.html")
+        return FileResponse(index_file)
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):
-        # Strict boundary: do not let unknown API routes fall through to HTML
+        # 1. Strict boundary: do not let unknown API routes fall through to HTML
         if full_path == "api" or full_path.startswith("api/"):
             raise HTTPException(status_code=404, detail=f"API endpoint '/{full_path}' not found")
 
-        # Serve static file if it exists directly in dist (e.g. vite.svg, favicon)
-        target_file = dist_dir / full_path
-        if full_path and target_file.exists() and target_file.is_file():
+        # 2. Immediate rejection of directory traversal, backslashes, null bytes, and path escapes
+        if ".." in full_path or "\\" in full_path or "\x00" in full_path or full_path.startswith("/"):
+            raise HTTPException(status_code=404, detail=f"File not found: '{full_path}'")
+
+        # 3. Reject known system and backend paths from SPA fallback
+        normalized_lower = full_path.lower().lstrip("/")
+        if (
+            normalized_lower.startswith(("etc/", "proc/", "sys/", "windows/", "winnt/", "backend/"))
+            or normalized_lower in ("etc", "backend", "proc", "sys", "windows")
+        ):
+            raise HTTPException(status_code=404, detail=f"File not found: '{full_path}'")
+
+        # 4. Canonical path resolution strictly contained within canonical_dist
+        try:
+            target_file = (canonical_dist / full_path).resolve()
+        except (ValueError, RuntimeError):
+            raise HTTPException(status_code=404, detail="Invalid path")
+
+        if not target_file.is_relative_to(canonical_dist):
+            raise HTTPException(status_code=404, detail="Access denied")
+
+        # 5. Serve legitimate static file if it exists directly in dist (e.g. vite.svg, favicon)
+        if target_file.is_file():
             return FileResponse(target_file)
 
-        # Fallback to SPA index.html for client-side routing
-        return FileResponse(dist_dir / "index.html")
+        # 6. Reject requests that target specific file assets with extensions that do not exist
+        if Path(full_path).suffix:
+            raise HTTPException(status_code=404, detail=f"Static asset '/{full_path}' not found")
 
+        # 7. Fallback to SPA index.html for legitimate client-side routing
+        return FileResponse(index_file)

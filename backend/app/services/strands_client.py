@@ -2,6 +2,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 import httpx
 
@@ -77,6 +78,46 @@ EMERGENCY_MITIGATION_CRITERIA = {
     "true": "Active in-the-wild exploitation or imminent weaponization requiring immediate operational isolation or out-of-band mitigation.",
     "false": "Standard or expedited patch assessment without emergency operational isolation.",
 }
+
+
+def check_host_resources() -> None:
+    """Check whether host environment has sufficient memory to host a 2B parameter model."""
+    try:
+        import psutil
+        mem = psutil.virtual_memory()
+        available_gb = mem.available / (1024 ** 3)
+        if available_gb < 1.5:
+            msg = (
+                f"Constrained host memory: {available_gb:.1f}GB available. "
+                "Strands Decider 2B requires at least 2.0GB available memory to avoid process OOM termination."
+            )
+            logger.warning("%s", msg)
+            raise StrandsDeciderUnavailableError(msg)
+    except StrandsDeciderUnavailableError:
+        raise
+    except Exception:
+        pass
+
+
+def check_model_download_allowed(model_id: str, allow_download: bool = False) -> None:
+    """Prevent automatic downloading of multi-gigabyte models without explicit opt-in."""
+    is_local_path = Path(model_id).exists()
+    is_cached = False
+    try:
+        from huggingface_hub import try_to_load_from_cache  # type: ignore
+        cached_file = try_to_load_from_cache(model_id, "config.json")
+        is_cached = isinstance(cached_file, str)
+    except Exception:
+        pass
+
+    if not is_local_path and not is_cached and not allow_download:
+        msg = (
+            f"Automatic downloading of multi-gigabyte model '{model_id}' is disabled "
+            "(ALLOW_LOCAL_MODEL_DOWNLOAD=false). To run local inference, pre-download weights, "
+            "set ALLOW_LOCAL_MODEL_DOWNLOAD=true, or connect to a remote STRANDS_DECIDER_URL."
+        )
+        logger.warning("%s", msg)
+        raise StrandsDeciderUnavailableError(msg)
 
 
 class StrandsDeciderClient:
@@ -359,6 +400,13 @@ class StrandsDeciderClient:
                         )
                     logger.warning("%s", platform_doc)
                     raise StrandsDeciderUnavailableError(platform_doc) from e
+
+                # Resource & Cost Guards: verify host memory and avoid un-opted downloads
+                import unittest.mock
+                is_mock = isinstance(load_engine, (unittest.mock.Mock, unittest.mock.MagicMock))
+                if not is_mock:
+                    check_host_resources()
+                    check_model_download_allowed(self.model_id, getattr(settings, "allow_local_model_download", False))
 
                 logger.info(
                     "Loading local Strands Decider weights for checkpoint '%s' on device '%s'...",

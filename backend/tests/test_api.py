@@ -3,6 +3,7 @@ import respx
 import httpx
 from app.main import app
 from app.config import settings
+from app.services.cisa_client import cisa_client
 from tests.conftest import (
     MOCK_CISA_CATALOG,
     MOCK_NVD_LOG4SHELL,
@@ -60,3 +61,66 @@ async def test_api_unknown_cve_returns_404():
             data = response.json()
             assert data["status"] == "NOT_FOUND"
             assert data["normalized"] is None
+
+
+@pytest.mark.asyncio
+async def test_api_insufficient_evidence_when_cisa_fails():
+    """Verify that when NVD & EPSS report not found but CISA fails,
+
+    GET /api/vulnerabilities/{cve} returns 502 with ERROR status and normalized=None.
+    """
+    cisa_client._catalog_cache.clear()
+    cisa_client._last_refreshed = None
+
+    async with respx.mock(assert_all_called=False) as respx_mock:
+        respx_mock.get(settings.cisa_kev_url).respond(status_code=403, text="Forbidden")
+        respx_mock.get(settings.nvd_api_base_url).respond(
+            status_code=200, json={"resultsPerPage": 0, "totalResults": 0, "vulnerabilities": []}
+        )
+        respx_mock.get(settings.epss_api_url).respond(
+            status_code=200, json={"status": "OK", "total": 0, "data": []}
+        )
+
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/api/vulnerabilities/CVE-2099-99999")
+            assert response.status_code == 502
+            data = response.json()
+            assert data["status"] == "ERROR"
+            assert data["normalized"] is None
+            assert data["provenance"]["cisa_kev"]["status"] == "FAILED"
+            assert data["provenance"]["nvd"]["status"] == "NOT_FOUND"
+            assert data["provenance"]["epss"]["status"] == "NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_cors_preflight_valid_origin():
+    """Verify that CORS preflight from allowed origin succeeds with credentials allowed."""
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.options(
+            "/api/health",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        assert response.status_code == 200
+        assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
+        assert response.headers.get("access-control-allow-credentials") == "true"
+
+
+@pytest.mark.asyncio
+async def test_cors_preflight_invalid_origin():
+    """Verify that CORS preflight from unconfigured/untrusted origin is rejected."""
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.options(
+            "/api/health",
+            headers={
+                "Origin": "http://untrusted-attacker.example.com",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        # CORSMiddleware does not reflect the origin or rejects with 400
+        assert (
+            "access-control-allow-origin" not in response.headers
+            or response.headers["access-control-allow-origin"] != "http://untrusted-attacker.example.com"
+        )

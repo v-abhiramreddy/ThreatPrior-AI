@@ -93,6 +93,25 @@ class Settings(BaseSettings):
         description="Maximum bounded retries for transient Bedrock throttling or server errors",
     )
 
+    # Model Download & Resource Protection
+    allow_local_model_download: bool = Field(
+        default=False,
+        description="Explicit opt-in required to automatically download multi-gigabyte local model weights into memory.",
+    )
+
+    # API Cost & Abuse Protection
+    triage_rate_limit_per_minute: int = Field(
+        default=60,
+        ge=0,
+        description="Rate limit for live AI triage requests per client IP per minute (0 to disable).",
+    )
+
+    # CORS Settings
+    cors_allowed_origins: str = Field(
+        default="http://localhost:5173,http://127.0.0.1:5173",
+        description="Comma-separated allowed origins for cross-origin requests",
+    )
+
     # Service metadata
     app_name: str = "ThreatPrior AI Vulnerability Intelligence Service"
     app_version: str = "0.3.0"

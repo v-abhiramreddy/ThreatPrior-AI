@@ -730,6 +730,115 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
     // Verify Fact-checking limitation is rendered
     await expect(page.locator('#confidence-limitations-panel')).toContainText('have not been independently fact-checked against vendor release registries');
   });
+
+  test('should prevent out-of-order response overwrite when user submits CVE A and then CVE B', async ({ page }) => {
+    // Route for CVE A (Log4Shell) has artificial 600ms delay
+    await page.route('**/api/vulnerabilities/CVE-2021-44228/triage', async (route) => {
+      await new Promise((r) => setTimeout(r, 600));
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          cve_id: 'CVE-2021-44228',
+          status: 'OK',
+          decision: {
+            priority: 'Critical',
+            rationale: 'Late arriving response for CVE-2021-44228',
+            risk_factors: ['Late response'],
+            recommended_action: 'Action for A',
+            confidence: 0.9,
+            engine: 'baseline',
+            model_id: 'baseline-v1',
+            decided_at: new Date().toISOString(),
+          },
+          normalized: {
+            title: 'Apache Log4j2 JNDI RCE',
+            description: 'Log4j description',
+            primary_severity: 'CRITICAL',
+            cvss_score: 10.0,
+            is_cisa_kev: true,
+            cisa_required_action: 'Patch A',
+          },
+          provenance: {
+            nvd: { source: 'NVD', status: 'AVAILABLE', weaknesses: [], cpe_configurations: [] },
+            cisa_kev: { source: 'CISA KEV', status: 'LISTED', is_listed: true },
+            epss: { source: 'EPSS', status: 'AVAILABLE', probability: 0.9 },
+          },
+        }),
+      });
+    });
+
+    // Route for CVE B (Spring4Shell) responds quickly (50ms)
+    await page.route('**/api/vulnerabilities/CVE-2022-22965/triage', async (route) => {
+      await new Promise((r) => setTimeout(r, 50));
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          cve_id: 'CVE-2022-22965',
+          status: 'OK',
+          decision: {
+            priority: 'Critical',
+            rationale: 'Prompt response for CVE-2022-22965 Spring4Shell',
+            risk_factors: ['Spring Framework RCE'],
+            recommended_action: 'Action for B',
+            confidence: 0.95,
+            engine: 'baseline',
+            model_id: 'baseline-v1',
+            decided_at: new Date().toISOString(),
+          },
+          normalized: {
+            title: 'Spring Framework RCE Spring4Shell',
+            description: 'Spring4Shell vulnerability description',
+            primary_severity: 'CRITICAL',
+            cvss_score: 9.8,
+            is_cisa_kev: true,
+            cisa_required_action: 'Patch B',
+          },
+          provenance: {
+            nvd: { source: 'NVD', status: 'AVAILABLE', weaknesses: [], cpe_configurations: [] },
+            cisa_kev: { source: 'CISA KEV', status: 'LISTED', is_listed: true },
+            epss: { source: 'EPSS', status: 'AVAILABLE', probability: 0.9 },
+          },
+        }),
+      });
+    });
+
+    await page.goto('/');
+
+    // 1. Submit CVE A
+    await page.locator('#cve-input').fill('CVE-2021-44228');
+    await page.locator('#btn-analyze').click();
+
+    // 2. Quickly submit CVE B before A resolves
+    await page.locator('#cve-input').fill('CVE-2022-22965');
+    await page.locator('#btn-analyze').click();
+
+    // 3. Wait 800ms for both requests to have completed
+    await page.waitForTimeout(800);
+
+    // 4. Verify that CVE B is displayed and was NOT overwritten by late CVE A
+    await expect(page.locator('#target-cve-id')).toContainText('CVE-2022-22965');
+    await expect(page.locator('#target-title')).toContainText('Spring Framework RCE Spring4Shell');
+  });
+
+  test('should handle HTTP 429 rate limit error gracefully', async ({ page }) => {
+    await page.route('**/api/vulnerabilities/CVE-2021-44228/triage', async (route) => {
+      await route.fulfill({
+        status: 429,
+        contentType: 'application/json',
+        headers: { 'Retry-After': '60' },
+        body: JSON.stringify({
+          detail: 'Rate limit exceeded: maximum 60 triage requests per minute per IP.',
+        }),
+      });
+    });
+
+    await page.goto('/');
+    await page.locator('#cve-input').fill('CVE-2021-44228');
+    await page.locator('#btn-analyze').click();
+
+    await expect(page.locator('#state-error')).toBeVisible();
+    await expect(page.locator('#state-error')).toContainText('Rate limit exceeded');
+  });
 });
-
-

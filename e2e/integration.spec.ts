@@ -255,7 +255,7 @@ test.describe('Frontend–Backend Integration Tests', () => {
 
   test('should gracefully handle backend offline, show error without silent fixture substitution, and allow explicit demo fixture loading', async ({ page }) => {
     // Abort all API network requests to simulate backend connection failure
-    await page.route('**/api/vulnerabilities/*', (route) => route.abort('connectionrefused'));
+    await page.route('**/api/vulnerabilities/**', (route) => route.abort('connectionrefused'));
 
     await page.goto('/');
 
