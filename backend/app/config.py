@@ -38,6 +38,10 @@ class Settings(BaseSettings):
 
     # Caching & Retries
     cisa_cache_ttl_hours: int = Field(default=4, ge=1, le=24)
+    cisa_seed_file: Optional[str] = Field(
+        default=None,
+        description="Optional custom path to bundled initial CISA KEV seed snapshot JSON",
+    )
     max_retries: int = Field(default=2, ge=0, le=5)
     retry_backoff_factor: float = Field(default=1.5, ge=1.0, le=5.0)
 

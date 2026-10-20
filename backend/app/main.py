@@ -20,8 +20,9 @@ logger = logging.getLogger("threatprior.backend")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: preload CISA KEV catalog in background
+    # Startup: preload CISA KEV seed catalog immediately, then refresh in background
     logger.info("Starting ThreatPrior AI backend service...")
+    cisa_client.load_seed_catalog()
     asyncio.create_task(cisa_client.ensure_catalog())
     yield
     # Shutdown

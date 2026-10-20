@@ -166,3 +166,70 @@ async def test_cisa_client_headers_contain_user_agent():
         assert "user-agent" in last_request.headers
         assert "ThreatPrior-AI" in last_request.headers["user-agent"]
         assert "application/json" in last_request.headers.get("accept", "")
+
+
+@pytest.mark.asyncio
+async def test_cisa_client_seed_catalog_loads_from_disk(tmp_path):
+    """Verify that seed catalog loads from disk, populates cache, and marks stale until refresh."""
+    import json
+    seed_file = tmp_path / "seed_kev.json"
+    seed_file.write_text(json.dumps(MOCK_CISA_CATALOG), encoding="utf-8")
+
+    client = CisaKevClient()
+    loaded = client.load_seed_catalog(seed_file)
+
+    assert loaded is True
+    assert client.count == 2
+    assert client.metadata["is_stale"] is True
+    assert client.metadata["version"] == "2026.10.15"
+
+
+@pytest.mark.asyncio
+async def test_cisa_client_seed_catalog_listed_when_upstream_fails_403(tmp_path):
+    """Verify that when upstream returns 403 on cold start with seed catalog:
+    1. Listed CVE returns LISTED with explicit upstream refresh failure warning.
+    2. Data is served safely without crashing or losing known KEV entries.
+    """
+    import json
+    seed_file = tmp_path / "seed_kev.json"
+    seed_file.write_text(json.dumps(MOCK_CISA_CATALOG), encoding="utf-8")
+
+    client = CisaKevClient()
+    client.load_seed_catalog(seed_file)
+
+    async with respx.mock(assert_all_called=False) as respx_mock:
+        respx_mock.get(settings.cisa_kev_url).respond(status_code=403, text="Forbidden")
+
+        result = await client.get_cve_kev_data("CVE-2021-44228")
+
+        assert result.status == SourceStatus.LISTED
+        assert result.is_listed is True
+        assert result.vendor_project == "Apache"
+        assert result.product == "Log4j2"
+        assert result.error_message is not None
+        assert "403" in result.error_message
+        assert "upstream refresh failed" in result.error_message.lower()
+        assert "upstream refresh failed" in result.notes.lower()
+
+
+@pytest.mark.asyncio
+async def test_cisa_client_seed_catalog_unlisted_when_upstream_fails_403(tmp_path):
+    """Verify that when upstream returns 403 on cold start with seed catalog:
+    Unlisted CVE returns FAILED and NEVER NOT_LISTED or safe.
+    """
+    import json
+    seed_file = tmp_path / "seed_kev.json"
+    seed_file.write_text(json.dumps(MOCK_CISA_CATALOG), encoding="utf-8")
+
+    client = CisaKevClient()
+    client.load_seed_catalog(seed_file)
+
+    async with respx.mock(assert_all_called=False) as respx_mock:
+        respx_mock.get(settings.cisa_kev_url).respond(status_code=403, text="Forbidden")
+
+        result = await client.get_cve_kev_data("CVE-2024-99999")
+
+        assert result.status == SourceStatus.FAILED
+        assert result.is_listed is False
+        assert "403" in result.error_message
+        assert "cannot be confirmed" in result.notes.lower()

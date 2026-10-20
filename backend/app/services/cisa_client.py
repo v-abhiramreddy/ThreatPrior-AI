@@ -1,6 +1,8 @@
 import asyncio
+import json
 import logging
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 from typing import Dict, Any, Optional
 import httpx
 
@@ -52,6 +54,57 @@ class CisaKevClient:
             "is_stale": is_stale,
             "last_error": self._last_refresh_error,
         }
+
+    def load_seed_catalog(self, seed_path: Optional[Path] = None) -> bool:
+        """Load bundled seed catalog snapshot from disk on cold start.
+
+        Populates catalog cache immediately so the service has baseline KEV entries
+        even if upstream live refresh is blocked by CDN/hosting IP restrictions (e.g. HTTP 403).
+        Preserves stale flag until a live refresh succeeds.
+        """
+        target = seed_path
+        if target is None:
+            configured = getattr(settings, "cisa_seed_file", None)
+            if configured:
+                target = Path(configured)
+            if not target or not target.is_file():
+                target = Path(__file__).resolve().parent.parent / "data" / "cisa_kev_seed.json"
+
+        if not target.is_file():
+            logger.info("No CISA KEV seed snapshot file found at %s", target)
+            return False
+
+        try:
+            with open(target, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            new_cache: Dict[str, Dict[str, Any]] = {}
+            for item in data.get("vulnerabilities", []):
+                cve_id = item.get("cveID", "").strip().upper()
+                if cve_id:
+                    new_cache[cve_id] = item
+
+            if new_cache:
+                self._catalog_cache = new_cache
+                self._catalog_metadata = {
+                    "catalogVersion": data.get("catalogVersion", "seed-snapshot"),
+                    "dateReleased": data.get("dateReleased"),
+                    "count": data.get("count", len(new_cache)),
+                    "is_seed": True,
+                }
+                # Epoch timestamp ensures cache is considered stale until live fetch succeeds
+                self._last_refreshed = datetime(2020, 1, 1, tzinfo=timezone.utc)
+                self._last_refresh_error = "Initial catalog loaded from bundled seed snapshot; awaiting live upstream refresh."
+                self._last_refresh_status = SourceStatus.FAILED
+                logger.info(
+                    "Loaded %d entries from CISA KEV seed snapshot (%s)",
+                    len(new_cache),
+                    target,
+                )
+                return True
+        except Exception as e:
+            logger.warning("Failed to load CISA KEV seed snapshot from %s: %s", target, str(e))
+        return False
 
     async def ensure_catalog(self, client: Optional[httpx.AsyncClient] = None) -> bool:
         """Ensure the CISA KEV catalog is populated and refreshed within the TTL window.

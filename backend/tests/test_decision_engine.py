@@ -962,3 +962,35 @@ def test_diagnose_bedrock_error_categories():
     assert "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" not in msg
     assert "SecretValue123456" not in msg
     assert "[REDACTED]" in msg
+
+
+@pytest.mark.asyncio
+async def test_stage1_failure_skips_bedrock_and_falls_back_to_baseline():
+    """Verify that when Stage 1 (Strands Decider) fails/is unavailable:
+    1. Stage 2 (Bedrock) is NOT invoked (bedrock_status == NOT_INVOKED).
+    2. Fallback baseline is selected with engine == BASELINE.
+    3. Fallback reason records the Stage 1 failure diagnosis.
+    4. Bedrock client is never called.
+    """
+    mock_bedrock = MagicMock()
+
+    class FailingDecider:
+        async def evaluate(self, resp):
+            raise StrandsDeciderUnavailableError(
+                "Constrained host memory: 0.0GB available. Strands Decider 2B requires at least 2.0GB."
+            )
+
+    engine = DecisionEngine(
+        bedrock_client=mock_bedrock,
+        strands_client_instance=FailingDecider(),
+        allow_fallback=True,
+    )
+
+    vuln_resp = create_sample_response()
+    decision = await engine.evaluate_vulnerability(vuln_resp)
+
+    assert decision.engine == DecisionEngineType.BASELINE
+    assert decision.bedrock_status == ModelInvocationStatus.NOT_INVOKED
+    assert decision.decider_status == ModelInvocationStatus.UNAVAILABLE
+    assert "Constrained host memory" in decision.fallback_reason
+    assert mock_bedrock.converse.called is False
