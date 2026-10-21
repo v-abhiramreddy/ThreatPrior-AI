@@ -5,18 +5,12 @@ interface HomeProps {
   onSelectCve: (cve: string) => void;
 }
 
-interface PrimaryScreenshot {
+interface WalkthroughItem {
   id: string;
+  stage: string;
   title: string;
   description: string;
-  imageSrc: string;
-  altText: string;
-}
-
-interface AdditionalScreenshot {
-  id: string;
-  title: string;
-  description: string;
+  callouts: string[];
   imageSrc: string;
   altText: string;
 }
@@ -65,51 +59,93 @@ export const Home: React.FC<HomeProps> = ({ onNavigate, onSelectCve }) => {
     onNavigate('analyze');
   };
 
-  // Section 3: Primary 3 screenshots
-  const primaryScreenshots: PrimaryScreenshot[] = [
+  // Section 3: Primary Split Product Walkthrough Items
+  const primaryWalkthrough: WalkthroughItem[] = [
     {
       id: 'cve-search-input',
-      title: '1. Enter and Validate Any CVE',
-      description: 'Search standard CVE identifiers to automatically query NVD, CISA KEV, and EPSS threat intelligence.',
+      stage: 'Stage 01 · Query Ingestion',
+      title: 'CVE Input & Triage Trigger',
+      description:
+        'Enter any standard CVE identifier to initiate an on-demand multi-source threat intelligence lookup. Operators can test benchmark vulnerabilities like Log4Shell or evaluate zero-day threats in seconds.',
+      callouts: [
+        'Instant validation of standard CVE-YYYY-NNNN format',
+        'Automated telemetry retrieval from NVD, CISA KEV, and FIRST EPSS',
+        'One-click benchmark presets for rapid capability demonstration',
+      ],
       imageSrc: '/screenshots/cve_search_input.png',
       altText: 'ThreatPrior AI search input bar showing CVE identifier entry and Analyze action',
     },
     {
       id: 'priority-score-metrics',
-      title: '2. Priority Decision and Risk Signals',
-      description: 'View the assigned priority rating alongside CVSS base severity, CISA KEV status, and EPSS likelihood.',
+      stage: 'Stage 02 · Severity & Risk Scoring',
+      title: 'Priority Result & CVSS Metrics',
+      description:
+        'Combines intrinsic severity metrics with empirical exploitation probabilities. A prominent P1–P4 operational priority rating gives security teams an immediate, unambiguous triage tier.',
+      callouts: [
+        'Actionable priority classification from Critical (P1) down to Low (P4)',
+        'CVSS v3.1 base score, attack complexity, and vector analysis',
+        'Live FIRST EPSS 30-day weaponization probability & percentile',
+      ],
       imageSrc: '/screenshots/priority_cvss_score.png',
       altText: 'ThreatPrior AI vulnerability summary showing CVSS 10.0, CISA KEV Listed status, and EPSS probability metrics',
     },
     {
       id: 'ai-rationale-guidance',
-      title: '3. AI Rationale and Actionable Guidance',
-      description: 'Read plain-English reasoning from Claude Sonnet 4.6 with tailored, step-by-step remediation procedures.',
+      stage: 'Stage 03 · Dual-AI Synthesis',
+      title: 'AI Engine Status & Claude Rationale',
+      description:
+        'Provides natural language explanations and tailored mitigation roadmaps. Strands Decider 2B establishes the rapid priority decision, while Amazon Bedrock Claude Sonnet 4.6 articulates the threat exposure context.',
+      callouts: [
+        'Transparent dual-model provenance with verified engine status badges',
+        'Contextual natural language rationale explaining why the vulnerability matters',
+        'Concrete mitigation procedures with explicit operator verification warnings',
+      ],
       imageSrc: '/screenshots/ai_engine_rationale.png',
       altText: 'ThreatPrior AI recommendation panel with Strands Decider 2B status and Claude Sonnet 4.6 natural language rationale',
     },
   ];
 
-  // Section 3: Additional 3 screenshots (in expandable section)
-  const additionalScreenshots: AdditionalScreenshot[] = [
+  // Section 3: Additional Split Walkthrough Items (in expandable section)
+  const additionalWalkthrough: WalkthroughItem[] = [
     {
       id: 'threat-dossier',
-      title: 'Auditable Evidence Dossier',
-      description: 'Examine raw upstream telemetry, affected software CPEs, and binding federal directive deadlines.',
+      stage: 'Stage 04 · Authoritative Telemetry',
+      title: 'Threat Intelligence Dossier',
+      description:
+        'Auditable deep-dive telemetry organized into collapsible accordions. Security analysts can inspect raw NIST NVD records, CISA KEV publication dates, and binding federal remediation deadlines under BOD 22-01.',
+      callouts: [
+        'Official CISA KEV exploitation confirmation and mandatory patch due dates',
+        'Complete Common Platform Enumeration (CPE) configurations and affected versions',
+        'Raw JSON telemetry available for SOC audit trails and compliance reviews',
+      ],
       imageSrc: '/screenshots/threat_intelligence_sources.png',
       altText: 'Collapsible threat intelligence accordions showing NVD record telemetry, CISA KEV dates, and EPSS score details',
     },
     {
       id: 'risk-validation',
-      title: 'Risk Policy Validation',
-      description: 'Deterministic security rules cross-examine AI model outputs to catch under-prioritization.',
+      stage: 'Stage 05 · Policy Guardrails',
+      title: 'Risk Validation & Policy Safeguards',
+      description:
+        'Deterministic security guardrails cross-examine AI recommendations against empirical evidence. If a model attempts to under-prioritize an actively weaponized flaw, an independent safety rule triggers a policy disagreement alert.',
+      callouts: [
+        'Deterministic policy verification independent of generative AI weights',
+        'Automatic detection of under-prioritization on actively exploited vulnerabilities',
+        'Explicit evidence limitation notices surfacing missing or unverified upstream data',
+      ],
       imageSrc: '/screenshots/risk_validation_limitations.png',
       altText: 'Risk validation panel displaying policy agreement status, factual risk factors, and evidence limitations',
     },
     {
       id: 'analysis-history',
-      title: 'Analysis History and Triage Queue',
-      description: 'Search past investigations, filter by priority or active threat status, and export audit trails to CSV.',
+      stage: 'Stage 06 · Operational Audit Queue',
+      title: 'Analysis History & Triage Queue',
+      description:
+        'A centralized triage queue cataloging all processed CVE assessments. Security leads can monitor active mitigation statuses, filter records by severity or weaponization risk, and export compliance reports.',
+      callouts: [
+        'Real-time search, priority filtering, and CISA KEV status toggles',
+        'One-click CSV export with complete score provenance and timestamps',
+        'Instant navigation back to full deep-dive analysis for any logged record',
+      ],
       imageSrc: '/screenshots/analysis_history_preview.png',
       altText: 'ThreatPrior AI Analysis History table with CVE records, priority badges, CVSS scores, and export controls',
     },
@@ -416,181 +452,37 @@ export const Home: React.FC<HomeProps> = ({ onNavigate, onSelectCve }) => {
       </section>
 
       {/* =========================================================================
-          SECTION 3 — SEE THREATPRIOR AI IN ACTION
+          SECTION 3 — SEE THREATPRIOR AI IN ACTION (SPLIT PRODUCT WALKTHROUGH)
          ========================================================================= */}
-      <section id="platform-preview-section" className="px-margin py-12 md:py-14 bg-surface-container-lowest/70 border-y border-surface-container-high/50">
-        <div className="max-w-6xl mx-auto space-y-space-lg">
+      <section id="platform-preview-section" className="px-margin py-14 md:py-16 bg-surface-container-lowest/70 border-y border-surface-container-high/50">
+        <div className="max-w-6xl mx-auto space-y-space-lg md:space-y-10">
           <div className="text-center space-y-space-xs max-w-2xl mx-auto">
             <div className="inline-flex items-center gap-1 text-primary font-code-sm text-code-sm uppercase tracking-wider font-semibold">
               <span className="material-symbols-outlined text-[16px]">visibility</span>
-              <span>Platform Preview</span>
+              <span>Platform Walkthrough</span>
             </div>
             <h2 className="font-headline-lg text-headline-lg font-bold text-on-surface tracking-tight">
               See ThreatPrior AI in Action
             </h2>
             <p className="font-body-md text-body-md text-on-surface-variant">
-              Genuine interfaces and decision outputs captured directly from the live application.
+              Explore the end-to-end vulnerability triage journey through genuine interface captures.
             </p>
           </div>
 
-          {/* 3 Primary Screenshots: Responsive 2-column featured layout on desktop, stacked on mobile */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-space-md items-stretch">
-            {/* Left Column: Card 1 (Input) & Card 2 (Score & Metrics) */}
-            <div className="flex flex-col gap-space-md justify-between">
-              {/* Card 1: CVE Input */}
-              <div
-                id="preview-card-cve-search-input"
-                className="group rounded-xl bg-surface-container-low border border-surface-container-high overflow-hidden shadow-sm flex flex-col hover:border-primary/40 transition-colors"
-              >
+          {/* Primary Split Walkthrough Items */}
+          <div className="space-y-space-md md:space-y-6">
+            {primaryWalkthrough.map((item, index) => {
+              const isReversed = index % 2 === 1;
+              return (
                 <div
-                  role="button"
-                  tabIndex={0}
-                  aria-label="Enlarge screenshot: 1. Enter and Validate Any CVE"
-                  onClick={() => setModalImage({ src: '/screenshots/cve_search_input.png', alt: primaryScreenshots[0].altText, title: primaryScreenshots[0].title })}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      setModalImage({ src: '/screenshots/cve_search_input.png', alt: primaryScreenshots[0].altText, title: primaryScreenshots[0].title });
-                    }
-                  }}
-                  className="relative w-full bg-surface-container-lowest border-b border-surface-container-high/60 overflow-hidden cursor-pointer"
+                  key={item.id}
+                  id={`preview-card-${item.id}`}
+                  className={`rounded-2xl bg-surface-container-low border border-surface-container-high/80 overflow-hidden shadow-lg p-5 sm:p-6 lg:p-8 flex flex-col ${
+                    isReversed ? 'lg:flex-row-reverse' : 'lg:flex-row'
+                  } items-center gap-6 lg:gap-10 hover:border-primary/40 transition-colors`}
                 >
-                  <img
-                    src="/screenshots/cve_search_input.png"
-                    alt={primaryScreenshots[0].altText}
-                    className="w-full h-auto block object-cover group-hover:scale-[1.01] transition-transform duration-200"
-                  />
-                  <div className="absolute inset-0 bg-background/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                    <span className="px-2.5 py-1 rounded-md bg-surface-container-highest/90 text-primary font-code-sm text-[12px] flex items-center gap-1 shadow-md border border-primary/20">
-                      <span className="material-symbols-outlined text-[16px]">zoom_in</span>
-                      <span>Enlarge view</span>
-                    </span>
-                  </div>
-                </div>
-
-                <div className="p-4 sm:p-5 space-y-1">
-                  <h3 className="font-headline-sm text-body-md font-semibold text-on-surface">
-                    {primaryScreenshots[0].title}
-                  </h3>
-                  <p className="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">
-                    {primaryScreenshots[0].description}
-                  </p>
-                </div>
-              </div>
-
-              {/* Card 2: Priority Score & Signals */}
-              <div
-                id="preview-card-priority-score-metrics"
-                className="group rounded-xl bg-surface-container-low border border-surface-container-high overflow-hidden shadow-sm flex flex-col hover:border-primary/40 transition-colors"
-              >
-                <div
-                  role="button"
-                  tabIndex={0}
-                  aria-label="Enlarge screenshot: 2. Priority Decision and Risk Signals"
-                  onClick={() => setModalImage({ src: '/screenshots/priority_cvss_score.png', alt: primaryScreenshots[1].altText, title: primaryScreenshots[1].title })}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      setModalImage({ src: '/screenshots/priority_cvss_score.png', alt: primaryScreenshots[1].altText, title: primaryScreenshots[1].title });
-                    }
-                  }}
-                  className="relative w-full bg-surface-container-lowest border-b border-surface-container-high/60 overflow-hidden cursor-pointer"
-                >
-                  <img
-                    src="/screenshots/priority_cvss_score.png"
-                    alt={primaryScreenshots[1].altText}
-                    className="w-full h-auto block object-cover group-hover:scale-[1.01] transition-transform duration-200"
-                  />
-                  <div className="absolute inset-0 bg-background/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                    <span className="px-2.5 py-1 rounded-md bg-surface-container-highest/90 text-primary font-code-sm text-[12px] flex items-center gap-1 shadow-md border border-primary/20">
-                      <span className="material-symbols-outlined text-[16px]">zoom_in</span>
-                      <span>Enlarge view</span>
-                    </span>
-                  </div>
-                </div>
-
-                <div className="p-4 sm:p-5 space-y-1">
-                  <h3 className="font-headline-sm text-body-md font-semibold text-on-surface">
-                    {primaryScreenshots[1].title}
-                  </h3>
-                  <p className="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">
-                    {primaryScreenshots[1].description}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column: Card 3 (AI Rationale & Recommendations) */}
-            <div className="flex flex-col">
-              <div
-                id="preview-card-ai-rationale-guidance"
-                className="group h-full rounded-xl bg-surface-container-low border border-surface-container-high overflow-hidden shadow-sm flex flex-col justify-between hover:border-primary/40 transition-colors"
-              >
-                <div
-                  role="button"
-                  tabIndex={0}
-                  aria-label="Enlarge screenshot: 3. AI Rationale and Actionable Guidance"
-                  onClick={() => setModalImage({ src: '/screenshots/ai_engine_rationale.png', alt: primaryScreenshots[2].altText, title: primaryScreenshots[2].title })}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      setModalImage({ src: '/screenshots/ai_engine_rationale.png', alt: primaryScreenshots[2].altText, title: primaryScreenshots[2].title });
-                    }
-                  }}
-                  className="relative w-full bg-surface-container-lowest border-b border-surface-container-high/60 overflow-hidden cursor-pointer flex-1 flex items-start"
-                >
-                  <img
-                    src="/screenshots/ai_engine_rationale.png"
-                    alt={primaryScreenshots[2].altText}
-                    className="w-full h-auto block object-cover group-hover:scale-[1.01] transition-transform duration-200"
-                  />
-                  <div className="absolute inset-0 bg-background/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                    <span className="px-2.5 py-1 rounded-md bg-surface-container-highest/90 text-primary font-code-sm text-[12px] flex items-center gap-1 shadow-md border border-primary/20">
-                      <span className="material-symbols-outlined text-[16px]">zoom_in</span>
-                      <span>Enlarge view</span>
-                    </span>
-                  </div>
-                </div>
-
-                <div className="p-4 sm:p-5 space-y-1">
-                  <h3 className="font-headline-sm text-body-md font-semibold text-on-surface">
-                    {primaryScreenshots[2].title}
-                  </h3>
-                  <p className="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">
-                    {primaryScreenshots[2].description}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Expandable Secondary Gallery: "Explore all components" */}
-          <div className="pt-space-xs flex flex-col items-center">
-            <button
-              id="toggle-all-components-btn"
-              type="button"
-              aria-expanded={showAllComponents}
-              onClick={() => setShowAllComponents(!showAllComponents)}
-              className="inline-flex items-center gap-space-xs px-space-md py-2 rounded-lg bg-surface-container-high hover:bg-surface-container-highest text-primary font-code-sm text-code-sm font-medium border border-surface-container-highest transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
-            >
-              <span>{showAllComponents ? 'Hide additional views' : 'Explore all components'}</span>
-              <span className="material-symbols-outlined text-[18px]">
-                {showAllComponents ? 'expand_less' : 'expand_more'}
-              </span>
-            </button>
-
-            {/* Collapsed by default */}
-            {showAllComponents && (
-              <div
-                id="additional-components-gallery"
-                className="grid grid-cols-1 md:grid-cols-3 gap-space-md w-full pt-space-md transition-all"
-              >
-                {additionalScreenshots.map((item) => (
-                  <div
-                    key={item.id}
-                    id={`preview-card-${item.id}`}
-                    className="group rounded-xl bg-surface-container-low border border-surface-container-high overflow-hidden shadow-sm flex flex-col justify-between hover:border-secondary/40 transition-colors"
-                  >
+                  {/* Screenshot Column (~55% on desktop) */}
+                  <div className="w-full lg:w-[56%] shrink-0">
                     <div
                       role="button"
                       tabIndex={0}
@@ -602,32 +494,144 @@ export const Home: React.FC<HomeProps> = ({ onNavigate, onSelectCve }) => {
                           setModalImage({ src: item.imageSrc, alt: item.altText, title: item.title });
                         }
                       }}
-                      className="relative w-full bg-surface-container-lowest border-b border-surface-container-high/60 overflow-hidden cursor-pointer"
+                      className="group relative w-full rounded-xl overflow-hidden border border-surface-container-high bg-surface-container-lowest/80 shadow-md cursor-pointer focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
                     >
                       <img
                         src={item.imageSrc}
                         alt={item.altText}
-                        className="w-full h-auto block object-cover group-hover:scale-[1.01] transition-transform duration-200"
-                        style={{ maxHeight: '240px' }}
+                        className="w-full h-auto block object-contain rounded-xl group-hover:scale-[1.01] transition-transform duration-200"
                       />
-                      <div className="absolute inset-0 bg-background/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                        <span className="px-2.5 py-1 rounded-md bg-surface-container-highest/90 text-secondary font-code-sm text-[12px] flex items-center gap-1 shadow-md border border-secondary/20">
-                          <span className="material-symbols-outlined text-[16px]">zoom_in</span>
-                          <span>Enlarge view</span>
+                      <div className="absolute inset-0 bg-background/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                        <span className="px-3 py-1.5 rounded-lg bg-surface-container-highest/95 text-primary font-code-sm text-[12px] font-semibold flex items-center gap-1.5 shadow-lg border border-primary/30">
+                          <span className="material-symbols-outlined text-[18px]">zoom_in</span>
+                          <span>Click to enlarge</span>
                         </span>
                       </div>
                     </div>
-
-                    <div className="p-4 sm:p-5 space-y-1">
-                      <h3 className="font-headline-sm text-body-md font-semibold text-on-surface">
-                        {item.title}
-                      </h3>
-                      <p className="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">
-                        {item.description}
-                      </p>
-                    </div>
                   </div>
-                ))}
+
+                  {/* Explanation Column (~45% on desktop) */}
+                  <div className="w-full lg:w-[44%] flex flex-col justify-center space-y-3.5">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/30 text-primary font-code-sm text-[11px] font-bold tracking-wider uppercase">
+                        {item.stage}
+                      </span>
+                    </div>
+
+                    <h3 className="font-headline-sm text-xl md:text-2xl font-bold text-on-surface tracking-tight">
+                      {item.title}
+                    </h3>
+
+                    <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+                      {item.description}
+                    </p>
+
+                    <ul className="space-y-2 pt-2 border-t border-surface-container-high/60">
+                      {item.callouts.map((callout, idx) => (
+                        <li key={idx} className="flex items-start gap-2 text-body-sm text-on-surface/90 font-medium">
+                          <span className="material-symbols-outlined text-secondary text-[18px] shrink-0 mt-0.5">
+                            check_circle
+                          </span>
+                          <span className="leading-snug">{callout}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Expandable Secondary Gallery: "Explore all components" */}
+          <div className="pt-2 flex flex-col items-center">
+            <button
+              id="toggle-all-components-btn"
+              type="button"
+              aria-expanded={showAllComponents}
+              onClick={() => setShowAllComponents(!showAllComponents)}
+              className="inline-flex items-center gap-space-xs px-space-md py-2.5 rounded-lg bg-surface-container-high hover:bg-surface-container-highest text-primary font-code-sm text-code-sm font-medium border border-surface-container-highest transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+            >
+              <span>{showAllComponents ? 'Hide extended walkthrough' : 'Explore all components (6 stages)'}</span>
+              <span className="material-symbols-outlined text-[18px]">
+                {showAllComponents ? 'expand_less' : 'expand_more'}
+              </span>
+            </button>
+
+            {/* Collapsed by default */}
+            {showAllComponents && (
+              <div
+                id="additional-components-gallery"
+                className="w-full space-y-space-md md:space-y-6 pt-6 transition-all"
+              >
+                {additionalWalkthrough.map((item, index) => {
+                  const isReversed = (index + primaryWalkthrough.length) % 2 === 1;
+                  return (
+                    <div
+                      key={item.id}
+                      id={`preview-card-${item.id}`}
+                      className={`rounded-2xl bg-surface-container-low border border-surface-container-high/80 overflow-hidden shadow-lg p-5 sm:p-6 lg:p-8 flex flex-col ${
+                        isReversed ? 'lg:flex-row-reverse' : 'lg:flex-row'
+                      } items-center gap-6 lg:gap-10 hover:border-secondary/40 transition-colors`}
+                    >
+                      {/* Screenshot Column (~55% on desktop) */}
+                      <div className="w-full lg:w-[56%] shrink-0">
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Enlarge screenshot: ${item.title}`}
+                          onClick={() => setModalImage({ src: item.imageSrc, alt: item.altText, title: item.title })}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setModalImage({ src: item.imageSrc, alt: item.altText, title: item.title });
+                            }
+                          }}
+                          className="group relative w-full rounded-xl overflow-hidden border border-surface-container-high bg-surface-container-lowest/80 shadow-md cursor-pointer focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                        >
+                          <img
+                            src={item.imageSrc}
+                            alt={item.altText}
+                            className="w-full h-auto block object-contain rounded-xl group-hover:scale-[1.01] transition-transform duration-200"
+                          />
+                          <div className="absolute inset-0 bg-background/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                            <span className="px-3 py-1.5 rounded-lg bg-surface-container-highest/95 text-secondary font-code-sm text-[12px] font-semibold flex items-center gap-1.5 shadow-lg border border-secondary/30">
+                              <span className="material-symbols-outlined text-[18px]">zoom_in</span>
+                              <span>Click to enlarge</span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Explanation Column (~45% on desktop) */}
+                      <div className="w-full lg:w-[44%] flex flex-col justify-center space-y-3.5">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-0.5 rounded-full bg-secondary/10 border border-secondary/30 text-secondary font-code-sm text-[11px] font-bold tracking-wider uppercase">
+                            {item.stage}
+                          </span>
+                        </div>
+
+                        <h3 className="font-headline-sm text-xl md:text-2xl font-bold text-on-surface tracking-tight">
+                          {item.title}
+                        </h3>
+
+                        <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+                          {item.description}
+                        </p>
+
+                        <ul className="space-y-2 pt-2 border-t border-surface-container-high/60">
+                          {item.callouts.map((callout, idx) => (
+                            <li key={idx} className="flex items-start gap-2 text-body-sm text-on-surface/90 font-medium">
+                              <span className="material-symbols-outlined text-secondary text-[18px] shrink-0 mt-0.5">
+                                check_circle
+                              </span>
+                              <span className="leading-snug">{callout}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
