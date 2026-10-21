@@ -2,10 +2,10 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.config import settings
 from app.routers import health, vulnerabilities, triage
@@ -35,6 +35,34 @@ app = FastAPI(
     description="Vulnerability Intelligence Backend for ThreatPrior AI (NVD API 2.0, CISA KEV, EPSS)",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Enforce defensive HTTP response headers across API and static routes."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    return response
+
+
+@app.exception_handler(Exception)
+async def global_unhandled_exception_handler(request: Request, exc: Exception):
+    """Prevent internal tracebacks, paths, or secrets from being disclosed on unexpected 500 errors."""
+    logger.error(
+        "Unhandled exception processing request '%s': %s",
+        request.url.path,
+        str(exc),
+        exc_info=True,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An internal server error occurred. Please contact the administrator."},
+    )
+
 
 # CORS middleware configuration (avoids invalid wildcard + credentials combination)
 def get_cors_origins() -> list[str]:

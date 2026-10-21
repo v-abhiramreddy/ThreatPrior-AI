@@ -2,8 +2,8 @@ import React from 'react';
 import type { DataMode } from '../types';
 
 interface HeaderProps {
-  currentTab: 'analyze' | 'history';
-  onSelectTab: (tab: 'analyze' | 'history') => void;
+  currentTab: 'home' | 'analyze' | 'history';
+  onSelectTab: (tab: 'home' | 'analyze' | 'history') => void;
   dataMode?: DataMode;
 }
 
@@ -13,7 +13,15 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab, dataMod
       <div className="h-14 w-full px-margin flex items-center justify-between">
         {/* Left: Brand & Navigation */}
         <div className="flex items-center gap-space-lg">
-          <div className="flex items-center gap-space-md cursor-pointer" onClick={() => onSelectTab('analyze')}>
+          <div
+            id="brand-logo-btn"
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === 'Enter' && onSelectTab('home')}
+            className="flex items-center gap-space-md cursor-pointer"
+            onClick={() => onSelectTab('home')}
+            title="ThreatPrior AI — Home"
+          >
             <div className="w-8 h-8 rounded-lg bg-primary-container/20 border border-primary/30 flex items-center justify-center text-primary">
               <span className="material-symbols-outlined text-[20px]">security</span>
             </div>
@@ -21,41 +29,54 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab, dataMod
               <span className="font-headline-sm text-headline-sm text-on-surface tracking-tight font-semibold">
                 ThreatPrior AI
               </span>
-              <span className="font-label-sm text-label-sm px-space-xs py-0.5 rounded-lg bg-surface-container-high text-on-surface-variant font-code-sm uppercase">
+              <span className="font-label-sm text-label-sm px-space-xs py-0.5 rounded-lg bg-surface-container-high text-on-surface-variant font-code-sm uppercase hidden sm:inline">
                 v1.2 PROTOTYPE
               </span>
             </div>
           </div>
 
-          <div className="h-4 w-px bg-surface-container-highest hidden sm:block" />
+          <div className="h-4 w-px bg-surface-container-highest hidden md:block" />
 
           {/* Navigation Links */}
           <nav className="flex items-center gap-space-xs" aria-label="Main Navigation">
+            <button
+              id="nav-home-btn"
+              type="button"
+              onClick={() => onSelectTab('home')}
+              aria-current={currentTab === 'home' ? 'page' : undefined}
+              className={`px-space-md py-1.5 transition-colors font-medium rounded-lg text-body-sm cursor-pointer ${
+                currentTab === 'home'
+                  ? 'bg-surface-container text-primary font-medium shadow-sm'
+                  : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
+              }`}
+            >
+              Home
+            </button>
             <button
               id="nav-analyze-btn"
               type="button"
               onClick={() => onSelectTab('analyze')}
               aria-current={currentTab === 'analyze' ? 'page' : undefined}
-              className={`px-space-md py-1.5 transition-colors font-medium rounded-lg text-body-sm ${
+              className={`px-space-md py-1.5 transition-colors font-medium rounded-lg text-body-sm cursor-pointer ${
                 currentTab === 'analyze'
                   ? 'bg-surface-container text-primary font-medium shadow-sm'
                   : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
               }`}
             >
-              Analyze
+              <span className="hidden md:inline">Vulnerability </span>Analysis
             </button>
             <button
               id="nav-history-btn"
               type="button"
               onClick={() => onSelectTab('history')}
               aria-current={currentTab === 'history' ? 'page' : undefined}
-              className={`px-space-md py-1.5 transition-colors font-medium rounded-lg text-body-sm ${
+              className={`px-space-md py-1.5 transition-colors font-medium rounded-lg text-body-sm cursor-pointer ${
                 currentTab === 'history'
                   ? 'bg-surface-container text-primary font-medium shadow-sm'
                   : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
               }`}
             >
-              History
+              <span className="hidden md:inline">Analysis </span>History
             </button>
           </nav>
         </div>

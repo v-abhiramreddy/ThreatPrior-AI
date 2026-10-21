@@ -104,7 +104,7 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
       });
     });
 
-    await page.goto('/');
+    await page.goto('/#analyze');
 
     // Search and analyze
     await page.locator('#cve-input').fill('CVE-2021-44228');
@@ -226,7 +226,7 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
       });
     });
 
-    await page.goto('/');
+    await page.goto('/#analyze');
     await page.locator('#cve-input').fill('CVE-2022-22965');
     await page.locator('#btn-analyze').click();
 
@@ -324,7 +324,7 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
       });
     });
 
-    await page.goto('/');
+    await page.goto('/#analyze');
 
     await page.locator('#cve-input').fill('CVE-2023-38606');
     await page.locator('#btn-analyze').click();
@@ -352,7 +352,7 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
       });
     });
 
-    await page.goto('/');
+    await page.goto('/#analyze');
 
     await page.locator('#cve-input').fill('CVE-2024-11111');
     await page.locator('#btn-analyze').click();
@@ -427,7 +427,7 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
       });
     });
 
-    await page.goto('/');
+    await page.goto('/#analyze');
     await page.locator('#cve-input').fill('CVE-2021-44228');
     await page.locator('#btn-analyze').click();
 
@@ -507,7 +507,7 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
       });
     });
 
-    await page.goto('/');
+    await page.goto('/#analyze');
     await page.locator('#cve-input').fill('CVE-2021-44228');
     await page.locator('#btn-analyze').click();
 
@@ -588,7 +588,7 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
       });
     });
 
-    await page.goto('/');
+    await page.goto('/#analyze');
     await page.locator('#cve-input').fill('CVE-2024-55555');
     await page.locator('#btn-analyze').click();
 
@@ -648,7 +648,7 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
       });
     });
 
-    await page.goto('/');
+    await page.goto('/#analyze');
     await page.locator('#cve-input').fill('CVE-2023-4863');
     await page.locator('#btn-analyze').click();
 
@@ -712,7 +712,7 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
       });
     });
 
-    await page.goto('/');
+    await page.goto('/#analyze');
     await page.locator('#cve-input').fill('CVE-2021-44228');
     await page.locator('#btn-analyze').click();
 
@@ -804,7 +804,7 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
       });
     });
 
-    await page.goto('/');
+    await page.goto('/#analyze');
 
     // 1. Submit CVE A
     await page.locator('#cve-input').fill('CVE-2021-44228');
@@ -834,7 +834,7 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
       });
     });
 
-    await page.goto('/');
+    await page.goto('/#analyze');
     await page.locator('#cve-input').fill('CVE-2021-44228');
     await page.locator('#btn-analyze').click();
 

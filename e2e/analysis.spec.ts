@@ -171,7 +171,7 @@ test.describe('Vulnerability Analysis Page', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/#analyze');
   });
 
 

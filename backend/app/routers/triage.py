@@ -20,11 +20,12 @@ CVE_REGEX = re.compile(r"^CVE-\d{4}-\d{4,}$", re.IGNORECASE)
 
 
 class InMemoryRateLimiter:
-    """Sliding-window in-memory rate limiter per IP address."""
+    """Sliding-window in-memory rate limiter per IP address with automatic memory pruning."""
 
-    def __init__(self):
+    def __init__(self, max_tracked_ips: int = 1000):
         self._requests: dict[str, list[float]] = defaultdict(list)
         self._lock = Lock()
+        self._max_tracked_ips = max_tracked_ips
 
     def check(self, client_ip: str, limit_per_minute: int) -> None:
         if limit_per_minute <= 0:
@@ -34,6 +35,12 @@ class InMemoryRateLimiter:
         window_start = now - 60.0
 
         with self._lock:
+            # Defensive memory protection: prune expired IPs when tracking table grows large
+            if len(self._requests) > self._max_tracked_ips:
+                stale_ips = [ip for ip, reqs in self._requests.items() if not reqs or reqs[-1] <= window_start]
+                for ip in stale_ips:
+                    del self._requests[ip]
+
             # Prune timestamps outside the 60s sliding window
             timestamps = [t for t in self._requests[client_ip] if t > window_start]
             if len(timestamps) >= limit_per_minute:
@@ -56,10 +63,13 @@ triage_rate_limiter = InMemoryRateLimiter()
 
 def rate_limit_triage(request: Request) -> None:
     client_ip = "127.0.0.1"
-    if request.client and request.client.host:
+    # Prioritize client IP from reverse-proxy header when running behind Blitz/Render/ALB
+    if "x-forwarded-for" in request.headers:
+        forwarded = request.headers["x-forwarded-for"].split(",")[0].strip()
+        if forwarded:
+            client_ip = forwarded
+    elif request.client and request.client.host:
         client_ip = request.client.host
-    elif "x-forwarded-for" in request.headers:
-        client_ip = request.headers["x-forwarded-for"].split(",")[0].strip()
 
     limit = getattr(settings, "triage_rate_limit_per_minute", 60)
     triage_rate_limiter.check(client_ip, limit)
@@ -83,8 +93,8 @@ async def triage_vulnerability(cve_id: str):
     """
     normalized_cve = cve_id.strip().upper()
 
-    # Pre-flight syntax validation before issuing external requests
-    if not CVE_REGEX.match(normalized_cve):
+    # Pre-flight syntax and length validation before issuing external requests
+    if len(normalized_cve) > 30 or not CVE_REGEX.match(normalized_cve):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(

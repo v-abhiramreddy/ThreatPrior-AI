@@ -189,6 +189,7 @@ export const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onSelectCve })
               <input
                 id="searchInput"
                 type="text"
+                aria-label="Search analysis history"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search CVE ID, service, actor, or analyst..."
@@ -251,7 +252,7 @@ export const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onSelectCve })
         </div>
 
         {/* Table Container / High Density Evidence View */}
-        <div className="w-full rounded-xl bg-surface-container-low overflow-hidden shadow-sm border border-surface-container-high">
+        <div id="history-table-card" className="w-full rounded-xl bg-surface-container-low overflow-hidden shadow-sm border border-surface-container-high">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>

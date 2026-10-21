@@ -2,26 +2,37 @@ import { useState, useEffect } from 'react';
 import type { DataMode } from './types';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
+import { Home } from './pages/Home';
 import { VulnerabilityAnalysis } from './pages/VulnerabilityAnalysis';
 import { AnalysisHistory } from './pages/AnalysisHistory';
 
 export function App() {
-  const [currentTab, setCurrentTab] = useState<'analyze' | 'history'>(() => {
-    if (typeof window !== 'undefined' && window.location.hash === '#history') {
-      return 'history';
+  const [currentTab, setCurrentTab] = useState<'home' | 'analyze' | 'history'>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.toLowerCase();
+      if (hash === '#history') {
+        return 'history';
+      }
+      if (hash === '#analyze') {
+        return 'analyze';
+      }
+      return 'home';
     }
-    return 'analyze';
+    return 'home';
   });
   const [selectedCve, setSelectedCve] = useState<string>('CVE-2021-44228');
   const [dataMode, setDataMode] = useState<DataMode>('ready');
 
-  // Listen to hash changes for direct URL navigation in tests and bookmarks
+  // Listen to hash changes for direct URL navigation in tests, deep links, and bookmarks
   useEffect(() => {
     const handleHashChange = () => {
-      if (window.location.hash === '#history') {
+      const hash = window.location.hash.toLowerCase();
+      if (hash === '#history') {
         setCurrentTab('history');
-      } else {
+      } else if (hash === '#analyze') {
         setCurrentTab('analyze');
+      } else {
+        setCurrentTab('home');
       }
     };
 
@@ -29,12 +40,18 @@ export function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  const handleSelectTab = (tab: 'analyze' | 'history') => {
+  const handleSelectTab = (tab: 'home' | 'analyze' | 'history') => {
     setCurrentTab(tab);
-    window.location.hash = tab === 'history' ? '#history' : '#analyze';
+    if (tab === 'history') {
+      window.location.hash = '#history';
+    } else if (tab === 'analyze') {
+      window.location.hash = '#analyze';
+    } else {
+      window.location.hash = '#home';
+    }
   };
 
-  const handleSelectCveFromHistory = (cve: string) => {
+  const handleSelectCve = (cve: string) => {
     setSelectedCve(cve);
     handleSelectTab('analyze');
   };
@@ -44,19 +61,20 @@ export function App() {
       <Header currentTab={currentTab} onSelectTab={handleSelectTab} dataMode={dataMode} />
 
       <main className="flex-1 w-full pt-14 flex flex-col">
-        {currentTab === 'analyze' ? (
+        {currentTab === 'home' ? (
+          <Home onNavigate={handleSelectTab} onSelectCve={handleSelectCve} />
+        ) : currentTab === 'analyze' ? (
           <VulnerabilityAnalysis
             initialCve={selectedCve}
             dataMode={dataMode}
             onDataModeChange={setDataMode}
           />
         ) : (
-          <AnalysisHistory onSelectCve={handleSelectCveFromHistory} />
+          <AnalysisHistory onSelectCve={handleSelectCve} />
         )}
       </main>
 
-
-      <Footer />
+      <Footer onNavigate={handleSelectTab} />
     </div>
   );
 }

@@ -22,8 +22,8 @@ async def get_vulnerability(cve_id: str):
     """Retrieve normalized threat intelligence across NVD, CISA KEV, and EPSS."""
     normalized_cve = cve_id.strip().upper()
 
-    # Pre-flight syntax validation before issuing external requests
-    if not CVE_REGEX.match(normalized_cve):
+    # Pre-flight syntax and length validation before issuing external requests
+    if len(normalized_cve) > 30 or not CVE_REGEX.match(normalized_cve):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(

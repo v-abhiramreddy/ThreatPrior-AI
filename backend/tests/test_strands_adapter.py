@@ -734,3 +734,85 @@ async def test_auto_mode_falls_back_to_local_when_remote_fails():
             evaluation = await client.evaluate(resp)
             assert evaluation.priority == TriagePriority.CRITICAL
             assert evaluation.confidence == 0.85
+
+
+# 16. Remote mode with Decider Cloud URL and 35s timeout
+@pytest.mark.asyncio
+async def test_remote_mode_decider_cloud_success(monkeypatch):
+    monkeypatch.setenv("STRANDS_DECIDER_MODE", "remote")
+    monkeypatch.setenv("STRANDS_DECIDER_URL", "https://api.decider.cloud")
+    monkeypatch.setenv("STRANDS_DECIDER_MODEL_ID", "strands-decider-2b")
+    monkeypatch.setenv("STRANDS_DECIDER_TIMEOUT_SECONDS", "35.0")
+    monkeypatch.setenv("ALLOW_LOCAL_MODEL_DOWNLOAD", "false")
+
+    from app.config import Settings
+    custom_settings = Settings()
+    assert custom_settings.strands_decider_mode == "remote"
+    assert custom_settings.strands_decider_url == "https://api.decider.cloud"
+    assert custom_settings.strands_decider_model_id == "strands-decider-2b"
+    assert custom_settings.strands_decider_timeout_seconds == 35.0
+    assert custom_settings.allow_local_model_download is False
+
+    client = StrandsDeciderClient(
+        server_url=custom_settings.strands_decider_url,
+        mode=custom_settings.strands_decider_mode,
+        model_id=custom_settings.strands_decider_model_id,
+        timeout_seconds=custom_settings.strands_decider_timeout_seconds,
+    )
+    assert client.server_url == "https://api.decider.cloud"
+    assert client.mode == "remote"
+    assert client.timeout_seconds == 35.0
+
+    resp = create_sample_vuln()
+    async with respx.mock(assert_all_called=True) as respx_mock:
+        respx_mock.post("https://api.decider.cloud/v1/systemone").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "model": "strands-decider-2b",
+                    "answers": {
+                        "priority": {
+                            "type": "choice",
+                            "choice": "Critical",
+                            "probabilities": {"Critical": 0.95, "High": 0.04, "Medium": 0.01, "Low": 0.0},
+                            "confidence": 0.9333,
+                        },
+                        "requires_emergency_mitigation": {"type": "noul", "noul": 0.88},
+                    },
+                },
+            )
+        )
+
+        evaluation = await client.evaluate(resp)
+        assert evaluation.priority == TriagePriority.CRITICAL
+        assert evaluation.confidence == 0.9333
+        assert evaluation.model_id == "strands-decider-2b"
+        assert evaluation.status == ModelInvocationStatus.SUCCESS
+        assert evaluation.requires_emergency_mitigation is True
+
+
+# 17. Remote mode failure strictly raises StrandsDeciderUnavailableError without attempting local fallback
+@pytest.mark.asyncio
+async def test_remote_mode_failure_strictly_rejects_local_fallback():
+    mock_load_engine = MagicMock()
+    with unittest.mock.patch("strands_decider.infer.load_engine", mock_load_engine):
+        client = StrandsDeciderClient(
+            server_url="https://api.decider.cloud",
+            mode="remote",
+            model_id="strands-decider-2b",
+            timeout_seconds=35.0,
+        )
+        resp = create_sample_vuln()
+
+        async with respx.mock(assert_all_called=True) as respx_mock:
+            respx_mock.post("https://api.decider.cloud/v1/systemone").mock(
+                side_effect=httpx.ConnectError("Connection refused")
+            )
+
+            with pytest.raises(StrandsDeciderUnavailableError) as exc_info:
+                await client.evaluate(resp)
+
+            assert "https://api.decider.cloud" in exc_info.value.message
+            assert "unavailable" in exc_info.value.message
+            # Verify load_engine was NEVER called
+            mock_load_engine.assert_not_called()

@@ -71,7 +71,7 @@ test.describe('Frontend–Backend Integration Tests', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/#analyze');
 
     // Type and click analyze
     await page.locator('#cve-input').fill('CVE-2021-44228');
@@ -149,7 +149,7 @@ test.describe('Frontend–Backend Integration Tests', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/#analyze');
     await page.locator('#cve-input').fill('CVE-2022-22965');
     await page.locator('#btn-analyze').click();
 
@@ -199,7 +199,7 @@ test.describe('Frontend–Backend Integration Tests', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/#analyze');
     await page.locator('#cve-input').fill('CVE-2023-38546');
     await page.locator('#btn-analyze').click();
 
@@ -223,7 +223,7 @@ test.describe('Frontend–Backend Integration Tests', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/#analyze');
     await page.locator('#cve-input').fill('INVALID-INPUT');
     await page.locator('#btn-analyze').click();
 
@@ -244,7 +244,7 @@ test.describe('Frontend–Backend Integration Tests', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/#analyze');
     await page.locator('#cve-input').fill('CVE-2099-99999');
     await page.locator('#btn-analyze').click();
 
@@ -257,7 +257,7 @@ test.describe('Frontend–Backend Integration Tests', () => {
     // Abort all API network requests to simulate backend connection failure
     await page.route('**/api/vulnerabilities/**', (route) => route.abort('connectionrefused'));
 
-    await page.goto('/');
+    await page.goto('/#analyze');
 
     // 1. Initial page load should explicitly indicate Ready to Analyze across header and page
     await expect(page.locator('#demo-mode-indicator')).toContainText('Ready to Analyze');
@@ -322,7 +322,7 @@ test.describe('Frontend–Backend Integration Tests', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/#analyze');
 
     // Initial: Ready to Analyze
     await expect(page.locator('#demo-mode-indicator')).toContainText('Ready to Analyze');
@@ -372,7 +372,7 @@ test.describe('Frontend–Backend Integration Tests', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/#analyze');
     await page.locator('#cve-input').fill('CVE-2021-44228');
     await page.locator('#btn-analyze').click();
 
