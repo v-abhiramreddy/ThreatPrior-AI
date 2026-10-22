@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 
 from app.config import settings
-from app.routers import health, vulnerabilities, triage
+from app.routers import health, vulnerabilities, triage, history, telemetry
 from app.services.cisa_client import cisa_client
 
 logging.basicConfig(
@@ -87,6 +87,8 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(vulnerabilities.router)
 app.include_router(triage.router)
+app.include_router(history.router)
+app.include_router(telemetry.router)
 
 
 # 2. Production Static SPA Serving (when frontend dist/ exists)

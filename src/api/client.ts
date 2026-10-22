@@ -4,6 +4,9 @@ import type {
   CveData,
   RemediationStep,
   SeverityLevel,
+  HistoryListResponse,
+  HistoryDetailResponse,
+  TelemetryResyncResponse,
 } from '../types';
 
 export class ApiError extends Error {
@@ -471,4 +474,112 @@ export function mapTriageToCveData(res: TriageApiResponse): CveData {
     fallbackReason,
     riskValidation: decision.risk_validation || res.risk_validation || (decision as any).riskValidation || (res as any).riskValidation || null,
   };
+}
+
+/**
+ * Fetch durable triage analysis history records and KPI metrics from the backend.
+ */
+export async function fetchAnalysisHistory(params?: {
+  search?: string;
+  priority?: string;
+  cisa_kev?: string;
+  limit?: number;
+  offset?: number;
+  signal?: AbortSignal;
+}): Promise<HistoryListResponse> {
+  const queryParams = new URLSearchParams();
+  if (params?.search) queryParams.set('search', params.search);
+  if (params?.priority && params.priority !== 'ALL') queryParams.set('priority', params.priority);
+  if (params?.cisa_kev && params.cisa_kev !== 'ALL') queryParams.set('cisa_kev', params.cisa_kev);
+  if (params?.limit) queryParams.set('limit', String(params.limit));
+  if (params?.offset) queryParams.set('offset', String(params.offset));
+
+  const qs = queryParams.toString();
+  const url = getApiUrl(`/api/history${qs ? `?${qs}` : ''}`);
+
+  try {
+    const response = await fetch(url, {
+      signal: params?.signal,
+      headers: { Accept: 'application/json' },
+    });
+
+    if (!response.ok) {
+      throw new ApiError(`Failed to fetch analysis history: HTTP ${response.status}`, {
+        status: response.status,
+      });
+    }
+
+    return (await response.json()) as HistoryListResponse;
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    if (err instanceof Error && (err.name === 'AbortError' || params?.signal?.aborted)) {
+      throw new ApiError('History request was aborted.', { isAborted: true });
+    }
+    throw new ApiError('Backend service is offline or unreachable.', { isOffline: true });
+  }
+}
+
+/**
+ * Fetch a specific stored analysis record (including raw TriageApiResponse) without re-running models.
+ */
+export async function fetchHistoryRecord(
+  idOrCve: string,
+  options?: { signal?: AbortSignal }
+): Promise<HistoryDetailResponse> {
+  const url = getApiUrl(`/api/history/${encodeURIComponent(idOrCve.trim())}`);
+
+  try {
+    const response = await fetch(url, {
+      signal: options?.signal,
+      headers: { Accept: 'application/json' },
+    });
+
+    if (response.status === 404) {
+      throw new ApiError(`History record '${idOrCve}' not found.`, { status: 404 });
+    }
+
+    if (!response.ok) {
+      throw new ApiError(`Failed to fetch history record: HTTP ${response.status}`, {
+        status: response.status,
+      });
+    }
+
+    return (await response.json()) as HistoryDetailResponse;
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    if (err instanceof Error && (err.name === 'AbortError' || options?.signal?.aborted)) {
+      throw new ApiError('History record request was aborted.', { isAborted: true });
+    }
+    throw new ApiError('Backend service is offline or unreachable.', { isOffline: true });
+  }
+}
+
+/**
+ * Trigger live telemetry resynchronization across CISA KEV, NVD API 2.0, and EPSS.
+ */
+export async function resyncTelemetry(options?: { signal?: AbortSignal }): Promise<TelemetryResyncResponse> {
+  const url = getApiUrl('/api/telemetry/resync');
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      signal: options?.signal,
+      headers: { Accept: 'application/json' },
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new ApiError(data.detail || `Telemetry resync failed: HTTP ${response.status}`, {
+        status: response.status,
+      });
+    }
+
+    return (await response.json()) as TelemetryResyncResponse;
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    if (err instanceof Error && (err.name === 'AbortError' || options?.signal?.aborted)) {
+      throw new ApiError('Telemetry resync request was aborted.', { isAborted: true });
+    }
+    throw new ApiError('Backend service is offline or unreachable.', { isOffline: true });
+  }
 }

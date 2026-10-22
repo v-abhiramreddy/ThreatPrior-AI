@@ -95,6 +95,11 @@ logs/
 *.bak
 *.swp
 *.swo
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
 
 # 7. IDE & Operating System Artifacts
 .DS_Store

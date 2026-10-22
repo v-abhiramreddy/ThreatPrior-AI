@@ -11,6 +11,7 @@ from app.models.enums import OverallStatus, SourceStatus
 from app.models.triage import DecisionEngineType, TriageResponse
 from app.services.aggregator import aggregator
 from app.services.decision_engine import DecisionEngineError, decision_engine
+from app.services.history_store import history_store
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +165,7 @@ async def triage_vulnerability(cve_id: str):
             },
         )
 
-    return TriageResponse(
+    triage_result = TriageResponse(
         cve_id=normalized_cve,
         status=vuln_response.status,
         retrieved_at=vuln_response.retrieved_at,
@@ -174,3 +175,10 @@ async def triage_vulnerability(cve_id: str):
         provenance=vuln_response.provenance,
         errors=vuln_response.errors,
     )
+
+    try:
+        history_store.save_analysis(triage_result)
+    except Exception as e:
+        logger.warning("Failed to record triage analysis in history store: %s", str(e))
+
+    return triage_result

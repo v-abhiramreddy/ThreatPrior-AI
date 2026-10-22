@@ -1,8 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import type { AuditRecord, TriageApiResponse } from '../types';
 import { DEMO_AUDIT_HISTORY } from '../mockData';
+import { fetchAnalysisHistory, resyncTelemetry, fetchHistoryRecord } from '../api/client';
 
 interface AnalysisHistoryProps {
-  onSelectCve: (cve: string) => void;
+  onSelectCve: (cve: string, storedData?: TriageApiResponse | null) => void;
 }
 
 export const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onSelectCve }) => {
@@ -12,14 +14,100 @@ export const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onSelectCve })
   const [copiedToken, setCopiedToken] = useState(false);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
 
+  // Live Audit Store State
+  const [records, setRecords] = useState<AuditRecord[]>(DEMO_AUDIT_HISTORY);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [isLiveSource, setIsLiveSource] = useState<boolean>(false);
+
   const showNotice = (msg: string) => {
     setNoticeMessage(msg);
-    setTimeout(() => setNoticeMessage(null), 3500);
+    setTimeout(() => setNoticeMessage(null), 4000);
+  };
+
+  const processHistoryData = (res: any) => {
+    if (res && res.items && res.items.length > 0) {
+      setRecords(res.items);
+      setIsLiveSource(true);
+    } else {
+      setRecords(DEMO_AUDIT_HISTORY);
+      setIsLiveSource(false);
+    }
+  };
+
+  const loadHistory = async (showSpinner = false) => {
+    if (showSpinner) {
+      setIsLoading(true);
+    }
+    try {
+      const res = await fetchAnalysisHistory();
+      processHistoryData(res);
+    } catch {
+      setRecords(DEMO_AUDIT_HISTORY);
+      setIsLiveSource(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    fetchAnalysisHistory()
+      .then((res) => {
+        if (!mounted) return;
+        processHistoryData(res);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setRecords(DEMO_AUDIT_HISTORY);
+        setIsLiveSource(false);
+      })
+      .finally(() => {
+        if (mounted) setIsLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleResyncTelemetry = async () => {
+    setIsSyncing(true);
+    try {
+      const result = await resyncTelemetry();
+      if (result.status === 'success') {
+        showNotice(`Telemetry Resync Complete: CISA (${result.sources.cisa_kev.count?.toLocaleString() || 0} CVEs), NVD (OK), EPSS (OK)`);
+      } else if (result.status === 'partial') {
+        const cisaNote = result.sources.cisa_kev.error || (result.sources.cisa_kev.source === 'bundled_seed_cache' ? 'Seed Cached' : 'Partial');
+        showNotice(`Telemetry Resync (Partial): CISA ${cisaNote}, NVD (${result.sources.nvd.status}), EPSS (${result.sources.epss.status})`);
+      } else {
+        showNotice(`Telemetry Resync Failed: ${result.sources.cisa_kev.error || 'Upstream sources unreachable'}`);
+      }
+      await loadHistory();
+    } catch (err: any) {
+      showNotice(`Telemetry Resync Error: ${err.message || 'Service unavailable'}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleViewAnalysis = async (cve: string, id: string) => {
+    try {
+      const detail = await fetchHistoryRecord(id || cve);
+      if (detail && detail.triage_response) {
+        showNotice(`Loaded stored audit result for ${cve} (no re-inference needed)`);
+        onSelectCve(cve, detail.triage_response);
+        return;
+      }
+    } catch {
+      // Fallback if not found in stored DB
+    }
+    onSelectCve(cve, null);
   };
 
   const filteredRows = useMemo(() => {
     const q = searchTerm.toLowerCase().trim();
-    return DEMO_AUDIT_HISTORY.filter((row) => {
+    return records.filter((row) => {
       const matchesSearch =
         !q ||
         row.cve.toLowerCase().includes(q) ||
@@ -31,7 +119,7 @@ export const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onSelectCve })
 
       return matchesSearch && matchesPriority && matchesKev;
     });
-  }, [searchTerm, priorityFilter, kevFilter]);
+  }, [records, searchTerm, priorityFilter, kevFilter]);
 
   const handleResetFilters = () => {
     setSearchTerm('');
@@ -88,7 +176,9 @@ export const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onSelectCve })
           <div className="flex flex-col gap-space-xs">
             <div className="flex items-center gap-space-sm font-label-sm text-label-sm uppercase tracking-wider text-primary">
               <span className="inline-block w-2 h-2 rounded-full bg-primary animate-pulse"></span>
-              <span>Security Audit Trail · Telemetry Sync (Demo Data)</span>
+              <span>
+                {isLiveSource ? 'Security Audit Trail · Live Durable Storage (SQLite)' : 'Security Audit Trail · Baseline Snapshot'}
+              </span>
             </div>
             <h1 className="font-headline-lg text-headline-lg text-on-surface tracking-tight font-semibold">
               Analysis History &amp; Triage Queue
@@ -112,11 +202,12 @@ export const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onSelectCve })
             <button
               id="resyncTelemetryBtn"
               type="button"
-              onClick={() => showNotice('Simulated telemetry resync completed (Demo Mode)')}
-              className="flex items-center gap-space-xs px-space-md py-2 rounded-lg bg-primary text-on-primary hover:bg-secondary transition-colors font-headline-sm text-label-md shadow-sm active:scale-95 cursor-pointer"
+              disabled={isSyncing}
+              onClick={handleResyncTelemetry}
+              className="flex items-center gap-space-xs px-space-md py-2 rounded-lg bg-primary text-on-primary hover:bg-secondary transition-colors font-headline-sm text-label-md shadow-sm active:scale-95 cursor-pointer disabled:opacity-60"
             >
-              <span className="material-symbols-outlined text-[16px]">sync</span>
-              <span>Resync Telemetry</span>
+              <span className={`material-symbols-outlined text-[16px] ${isSyncing ? 'animate-spin' : ''}`}>sync</span>
+              <span>{isSyncing ? 'Resyncing...' : 'Resync Telemetry'}</span>
             </button>
           </div>
         </div>
@@ -237,7 +328,7 @@ export const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onSelectCve })
           {/* Quick Reset & Count */}
           <div className="flex items-center justify-between sm:justify-end gap-space-md">
             <span id="filteredCount" className="font-code-sm text-code-sm text-on-surface-variant">
-              Showing {filteredRows.length} of {DEMO_AUDIT_HISTORY.length} displayed
+              Showing {filteredRows.length} of {records.length} displayed
             </span>
             <button
               id="resetFiltersBtn"
@@ -270,7 +361,9 @@ export const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onSelectCve })
                 {filteredRows.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-space-xl text-center text-on-surface-variant font-code-sm">
-                      No matching CVE records found in demo history. Try adjusting filters or search terms.
+                      {isLoading
+                        ? 'Loading audit trail from durable storage...'
+                        : 'No matching CVE records found in demo history. Try adjusting filters or search terms.'}
                     </td>
                   </tr>
                 ) : (
@@ -295,7 +388,7 @@ export const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onSelectCve })
                           <div className="flex flex-col">
                             <span
                               className="font-code-lg text-code-lg text-on-surface font-semibold group-hover:text-primary transition-colors cursor-pointer"
-                              onClick={() => onSelectCve(row.cve)}
+                              onClick={() => handleViewAnalysis(row.cve, row.id)}
                             >
                               {row.cve}
                             </span>
@@ -377,15 +470,15 @@ export const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onSelectCve })
                         <div className="flex items-center justify-end gap-space-xs">
                           <button
                             type="button"
-                            onClick={() => onSelectCve(row.cve)}
+                            onClick={() => handleViewAnalysis(row.cve, row.id)}
                             className="px-space-sm py-1 rounded-lg bg-surface-container-high text-on-surface hover:bg-surface-container-highest transition-colors font-code-sm text-code-sm cursor-pointer border border-surface-container-highest"
                           >
                             View Analysis
                           </button>
                           <button
                             type="button"
-                            onClick={() => showNotice(`Re-evaluating ${row.cve} in simulation...`)}
-                            title="Re-evaluate"
+                            onClick={() => onSelectCve(row.cve, null)}
+                            title="Run live analysis"
                             className="p-1 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer"
                           >
                             <span className="material-symbols-outlined text-[18px]">replay</span>

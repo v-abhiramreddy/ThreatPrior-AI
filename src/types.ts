@@ -233,12 +233,50 @@ export interface AuditRecord {
   cve: string;
   title: string;
   analyzedAt: string;
+  analyzedAtIso?: string;
   analyzedBy: string;
   priority: PriorityLevel;
+  priorityName?: string;
   cvss: string;
   epss: string;
   cisaKev: 'YES' | 'NO';
   mitigationStatus: string;
   mitigationColor: string;
+  engine?: string;
+  deciderStatus?: string;
+  bedrockStatus?: string;
+  isLive?: boolean;
+}
+
+export interface HistoryListResponse {
+  items: AuditRecord[];
+  total_count: number;
+  queue_count: number;
+  critical_count: number;
+  kev_count: number;
+}
+
+export interface HistoryDetailResponse {
+  summary: AuditRecord;
+  triage_response: TriageApiResponse | null;
+}
+
+export interface TelemetrySourceDetail {
+  status: string;
+  message: string;
+  latency_ms?: number;
+  count?: number;
+  source?: string;
+  error?: string | null;
+}
+
+export interface TelemetryResyncResponse {
+  status: 'success' | 'partial' | 'failed';
+  synced_at: string;
+  sources: {
+    cisa_kev: TelemetrySourceDetail;
+    nvd: TelemetrySourceDetail;
+    epss: TelemetrySourceDetail;
+  };
 }
 

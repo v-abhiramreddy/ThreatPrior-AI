@@ -67,13 +67,108 @@ Do not include any conversational preamble or markdown code blocks other than th
 """
 
 
-def diagnose_bedrock_error(e: Exception, model_id: str, region_name: str) -> str:
-    """Produce safe, actionable operational diagnostics for Bedrock errors without leaking secrets or tokens."""
+import random
+import time
+from enum import Enum
+import botocore.config
+
+
+class BedrockFailureCategory(str, Enum):
+    """Categorized root causes of Amazon Bedrock invocation failures for production reliability."""
+
+    THROTTLING = "throttling"
+    TRANSIENT_SERVICE = "transient_service"
+    CONNECTION = "connection"
+    TIMEOUT = "timeout"
+    VALIDATION = "validation"
+    MODEL_ACCESS = "model_access"
+    CREDENTIALS_OR_AUTH = "credentials_or_auth"
+    MALFORMED_OUTPUT = "malformed_output"
+    UNKNOWN = "unknown"
+
+    @property
+    def is_retryable(self) -> bool:
+        """Only transient, network, timeout, rate-limited, or malformed LLM responses should be retried."""
+        return self in (
+            BedrockFailureCategory.THROTTLING,
+            BedrockFailureCategory.TRANSIENT_SERVICE,
+            BedrockFailureCategory.CONNECTION,
+            BedrockFailureCategory.TIMEOUT,
+            BedrockFailureCategory.MALFORMED_OUTPUT,
+        )
+
+
+def classify_bedrock_error(e: Exception) -> tuple[BedrockFailureCategory, str, bool]:
+    """Classify an exception from Bedrock invocation into a failure category,
+    extracting error_code and determining whether it is retryable according to AWS best practices.
+    """
     error_code = ""
     error_msg = str(e)
     if isinstance(e, botocore.exceptions.ClientError):
         err_dict = e.response.get("Error", {})
         error_code = err_dict.get("Code", "")
+        error_msg = err_dict.get("Message", str(e))
+
+    # 1. Timeout
+    if isinstance(e, asyncio.TimeoutError):
+        return BedrockFailureCategory.TIMEOUT, "TimeoutError", True
+
+    # 2. Expired SSO / STS token or missing credentials (Permanent until operator action)
+    if (
+        isinstance(e, (botocore.exceptions.SSOTokenLoadError, botocore.exceptions.UnauthorizedSSOTokenError, botocore.exceptions.NoCredentialsError))
+        or error_code in ("ExpiredToken", "ExpiredTokenException", "RequestExpired")
+        or "security token included in the request is expired" in error_msg.lower()
+    ):
+        return BedrockFailureCategory.CREDENTIALS_OR_AUTH, error_code or type(e).__name__, False
+
+    # 3. Access Denied / IAM Authorization
+    if (
+        error_code in ("AccessDeniedException", "UnauthorizedException", "AccessDenied")
+        or "accessdenied" in error_msg.lower()
+    ):
+        return BedrockFailureCategory.MODEL_ACCESS, error_code or "AccessDeniedException", False
+
+    # 4. Model access not granted or model ID not found (Permanent)
+    if (
+        error_code in ("ResourceNotFoundException", "ValidationException")
+        and any(k in error_msg.lower() for k in ("model", "access", "not found", "invalid model", "does not exist"))
+    ):
+        return BedrockFailureCategory.MODEL_ACCESS, error_code or "ResourceNotFoundException", False
+
+    # 5. Validation error (Permanent)
+    if error_code in ("ValidationException", "InvalidParameterException"):
+        return BedrockFailureCategory.VALIDATION, error_code or "ValidationException", False
+
+    # 6. Throttling / Rate limits (Retryable)
+    if error_code in ("ThrottlingException", "RequestLimitExceeded", "TooManyRequestsException"):
+        return BedrockFailureCategory.THROTTLING, error_code or "ThrottlingException", True
+
+    # 7. Transient service error (Retryable)
+    if error_code in ("InternalServerException", "ModelNotReadyException", "ServiceUnavailableException", "ModelErrorException"):
+        return BedrockFailureCategory.TRANSIENT_SERVICE, error_code or "InternalServerException", True
+
+    # 8. Connection / Transient network failure (Retryable)
+    if isinstance(e, (
+        botocore.exceptions.EndpointConnectionError,
+        botocore.exceptions.ConnectTimeoutError,
+        botocore.exceptions.ReadTimeoutError,
+        botocore.exceptions.ConnectionClosedError,
+    )):
+        return BedrockFailureCategory.CONNECTION, type(e).__name__, True
+
+    # 9. Malformed model response / parsing (Retryable for LLM generation)
+    if isinstance(e, (ValueError, json.JSONDecodeError, ValidationError)):
+        return BedrockFailureCategory.MALFORMED_OUTPUT, type(e).__name__, True
+
+    return BedrockFailureCategory.UNKNOWN, error_code or type(e).__name__, False
+
+
+def diagnose_bedrock_error(e: Exception, model_id: str, region_name: str) -> str:
+    """Produce safe, actionable operational diagnostics for Bedrock errors without leaking secrets or tokens."""
+    category, error_code, _ = classify_bedrock_error(e)
+    error_msg = str(e)
+    if isinstance(e, botocore.exceptions.ClientError):
+        err_dict = e.response.get("Error", {})
         error_msg = err_dict.get("Message", str(e))
 
     code_tag = error_code or type(e).__name__
@@ -114,7 +209,12 @@ def diagnose_bedrock_error(e: Exception, model_id: str, region_name: str) -> str
         )
 
     # 5. Endpoint connection / transient network failure
-    if isinstance(e, (botocore.exceptions.EndpointConnectionError, botocore.exceptions.ConnectTimeoutError)):
+    if isinstance(e, (
+        botocore.exceptions.EndpointConnectionError,
+        botocore.exceptions.ConnectTimeoutError,
+        botocore.exceptions.ReadTimeoutError,
+        botocore.exceptions.ConnectionClosedError,
+    )):
         return (
             f"Unable to reach AWS Bedrock endpoint [{code_tag}] in region '{region_name}'. "
             "Check internet connection, DNS resolution, and VPC egress routing."
@@ -148,6 +248,7 @@ class DecisionEngine:
         region_name: Optional[str] = None,
         model_id: Optional[str] = None,
         allow_fallback: Optional[bool] = None,
+        max_concurrent_bedrock: int = 5,
     ):
         self.region_name = region_name or settings.aws_region
         self.model_id = model_id or settings.bedrock_model_id
@@ -155,15 +256,34 @@ class DecisionEngine:
             allow_fallback if allow_fallback is not None else settings.allow_baseline_fallback
         )
         self._injected_client = bedrock_client
+        self._cached_bedrock_client = None
         self.strands_client = strands_client_instance or strands_client
+        self._bedrock_semaphore = asyncio.Semaphore(max_concurrent_bedrock)
+        self._in_flight_tasks: Dict[str, asyncio.Task] = {}
+        self._in_flight_lock = asyncio.Lock()
 
     def _get_bedrock_client(self) -> Any:
         if self._injected_client is not None:
             return self._injected_client
-        return boto3.client(
+        if self._cached_bedrock_client is not None:
+            return self._cached_bedrock_client
+        boto_config = botocore.config.Config(
+            retries={"max_attempts": 0},
+            connect_timeout=10,
+            read_timeout=settings.decision_timeout_seconds,
+        )
+        self._cached_bedrock_client = boto3.client(
             service_name="bedrock-runtime",
             region_name=self.region_name,
+            config=boto_config,
         )
+        return self._cached_bedrock_client
+
+    def _compute_backoff_sleep(self, attempt: int) -> float:
+        """Compute exponential backoff with full jitter to avoid thundering herd on AWS Bedrock."""
+        base = settings.retry_backoff_factor
+        max_sleep = min(10.0, base ** attempt)
+        return random.uniform(0.5, 1.0) * max_sleep
 
     def _format_stage2_prompt(self, resp: VulnerabilityResponse, decider_eval: DeciderEvaluation) -> str:
         """Format normalized evidence and Stage 1 Strands Decider results for Stage 2 Bedrock synthesis."""
@@ -703,11 +823,29 @@ class DecisionEngine:
         )
 
     async def evaluate_vulnerability(self, resp: VulnerabilityResponse) -> TriageDecision:
-        """Execute genuine two-stage decision orchestration:
+        """Execute genuine two-stage decision orchestration with in-flight request deduplication:
 
         Stage 1: Strands Decider 2B selects priority and emergency mitigation requirement
         Stage 2: Amazon Bedrock synthesizes grounded rationale and operational actions
         """
+        cve_id = resp.cve_id
+        async with self._in_flight_lock:
+            existing_task = self._in_flight_tasks.get(cve_id)
+            if existing_task and not existing_task.done():
+                logger.info("Awaiting concurrent in-flight evaluation for %s to avoid duplicate model calls", cve_id)
+                return await asyncio.shield(existing_task)
+            task = asyncio.create_task(self._evaluate_vulnerability_pipeline(resp))
+            self._in_flight_tasks[cve_id] = task
+
+        try:
+            return await task
+        finally:
+            async with self._in_flight_lock:
+                if self._in_flight_tasks.get(cve_id) is task:
+                    del self._in_flight_tasks[cve_id]
+
+    async def _evaluate_vulnerability_pipeline(self, resp: VulnerabilityResponse) -> TriageDecision:
+        """Core pipeline implementation for Strands Decider 2B -> Amazon Bedrock."""
         # ------------------------------------------------------------------
         # Stage 1: Strands Decider 2B (System-1 Fast Decision)
         # ------------------------------------------------------------------
@@ -748,6 +886,11 @@ class DecisionEngine:
 
         while attempt <= max_retries:
             attempt += 1
+            t_start = time.perf_counter()
+            category: BedrockFailureCategory = BedrockFailureCategory.UNKNOWN
+            error_code: str = ""
+            retryable: bool = False
+
             try:
                 bedrock = self._get_bedrock_client()
                 loop = asyncio.get_running_loop()
@@ -768,10 +911,11 @@ class DecisionEngine:
                         },
                     )
 
-                bedrock_resp = await asyncio.wait_for(
-                    loop.run_in_executor(None, _call_bedrock),
-                    timeout=settings.decision_timeout_seconds,
-                )
+                async with self._bedrock_semaphore:
+                    bedrock_resp = await asyncio.wait_for(
+                        loop.run_in_executor(None, _call_bedrock),
+                        timeout=settings.decision_timeout_seconds,
+                    )
 
                 output_message = bedrock_resp.get("output", {}).get("message", {})
                 content_blocks = output_message.get("content", [])
@@ -783,37 +927,49 @@ class DecisionEngine:
                 # Both stages succeeded! Return genuine dual-model decision
                 return self._parse_and_validate_ai_json(raw_text, resp, decider_eval)
 
-            except asyncio.TimeoutError:
-                bedrock_error = f"Bedrock invocation timed out after {settings.decision_timeout_seconds}s (attempt {attempt}/{max_retries + 1})."
-                logger.warning(bedrock_error)
-                if attempt <= max_retries:
-                    await asyncio.sleep(settings.retry_backoff_factor ** attempt)
-                    continue
-
-            except (botocore.exceptions.ClientError, botocore.exceptions.BotoCoreError) as e:
-                error_code = ""
-                if isinstance(e, botocore.exceptions.ClientError):
-                    error_code = e.response.get("Error", {}).get("Code", "")
-
-                bedrock_error = diagnose_bedrock_error(e, self.model_id, self.region_name)
-                logger.warning(bedrock_error)
-
-                if error_code in ("ThrottlingException", "RequestLimitExceeded", "InternalServerException", "ModelNotReadyException") and attempt <= max_retries:
-                    await asyncio.sleep(settings.retry_backoff_factor ** attempt)
-                    continue
-                break
-
-            except (ValueError, json.JSONDecodeError) as e:
-                bedrock_error = f"Malformed model response: {str(e)}"
-                logger.warning(bedrock_error)
-                if attempt <= max_retries:
-                    await asyncio.sleep(settings.retry_backoff_factor ** attempt)
-                    continue
-                break
-
             except Exception as e:
-                bedrock_error = f"Unexpected error during Bedrock invocation: {str(e)}"
-                logger.error(bedrock_error)
+                latency_ms = round((time.perf_counter() - t_start) * 1000, 2)
+                category, error_code, retryable = classify_bedrock_error(e)
+
+                if isinstance(e, asyncio.TimeoutError):
+                    bedrock_error = f"Bedrock invocation timed out after {settings.decision_timeout_seconds}s (attempt {attempt}/{max_retries + 1})."
+                elif isinstance(e, (botocore.exceptions.ClientError, botocore.exceptions.BotoCoreError)):
+                    bedrock_error = diagnose_bedrock_error(e, self.model_id, self.region_name)
+                elif isinstance(e, (ValueError, json.JSONDecodeError, ValidationError)):
+                    bedrock_error = f"Malformed model response: {str(e)}"
+                else:
+                    bedrock_error = f"Unexpected error during Bedrock invocation: {str(e)}"
+
+                logger.warning(
+                    "Bedrock Stage 2 invocation failed [attempt %d/%d, category=%s, code=%s, retryable=%s, latency=%.2fms]: %s",
+                    attempt,
+                    max_retries + 1,
+                    category.value,
+                    error_code,
+                    retryable,
+                    latency_ms,
+                    bedrock_error,
+                    extra={
+                        "failure_category": category.value,
+                        "attempt": attempt,
+                        "max_retries": max_retries,
+                        "latency_ms": latency_ms,
+                        "model_id": self.model_id,
+                        "region": self.region_name,
+                        "error_code": error_code,
+                        "retryable": retryable,
+                    },
+                )
+
+                if retryable and attempt <= max_retries:
+                    sleep_sec = self._compute_backoff_sleep(attempt)
+                    logger.info(
+                        "Retrying Bedrock invocation for %s in %.2fs (jittered exponential backoff)...",
+                        resp.cve_id,
+                        sleep_sec,
+                    )
+                    await asyncio.sleep(sleep_sec)
+                    continue
                 break
 
         # ------------------------------------------------------------------

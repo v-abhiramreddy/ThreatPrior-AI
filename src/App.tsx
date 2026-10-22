@@ -100,6 +100,7 @@ export function App() {
   const initialRoute = parseRouteFromLocation();
   const [currentTab, setCurrentTab] = useState<'home' | 'analyze' | 'history'>(initialRoute.tab);
   const [selectedCve, setSelectedCve] = useState<string>(initialRoute.cve || 'CVE-2021-44228');
+  const [storedAnalysis, setStoredAnalysis] = useState<any | null>(null);
   const [dataMode, setDataMode] = useState<DataMode>('ready');
 
   // Synchronize route state with browser URL (hash changes, back/forward popstate)
@@ -137,8 +138,9 @@ export function App() {
     }
   };
 
-  const handleSelectCve = (cve: string) => {
+  const handleSelectCve = (cve: string, stored?: any | null) => {
     setSelectedCve(cve);
+    setStoredAnalysis(stored || null);
     setDataMode('ready');
     handleSelectTab('analyze');
   };
@@ -153,6 +155,7 @@ export function App() {
         ) : currentTab === 'analyze' ? (
           <VulnerabilityAnalysis
             initialCve={selectedCve}
+            initialTriageData={storedAnalysis}
             dataMode={dataMode}
             onDataModeChange={setDataMode}
           />

@@ -106,13 +106,13 @@ class CisaKevClient:
             logger.warning("Failed to load CISA KEV seed snapshot from %s: %s", target, str(e))
         return False
 
-    async def ensure_catalog(self, client: Optional[httpx.AsyncClient] = None) -> bool:
+    async def ensure_catalog(self, client: Optional[httpx.AsyncClient] = None, force: bool = False) -> bool:
         """Ensure the CISA KEV catalog is populated and refreshed within the TTL window.
-
+        If force=True, forces an upstream fetch regardless of TTL.
         Returns True if fresh catalog is available, or False if upstream fetch failed.
         """
         now = datetime.now(timezone.utc)
-        if (
+        if not force and (
             self._last_refreshed
             and (now - self._last_refreshed) < timedelta(hours=settings.cisa_cache_ttl_hours)
             and self._catalog_cache
@@ -122,7 +122,7 @@ class CisaKevClient:
 
         async with self._lock:
             # Double-check inside lock
-            if (
+            if not force and (
                 self._last_refreshed
                 and (now - self._last_refreshed) < timedelta(hours=settings.cisa_cache_ttl_hours)
                 and self._catalog_cache
