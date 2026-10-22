@@ -88,28 +88,38 @@ export const DEMO_CVE_PRESETS: Record<string, CveData> = {
     },
     rationale:
       'Log4j2 JNDI remote code execution enables unauthenticated attackers to execute arbitrary code with maximum structural impact. Driven by confirmed CISA KEV active exploitation in the wild and a 97.4% EPSS probability, this vulnerability demands instant mitigation across both internet-facing and internal VPC application tiers.',
+    summary:
+      'Apache Log4j2 contains a critical remote code execution vulnerability in its JNDI lookup functionality. Attackers can execute arbitrary code with application privileges by submitting malicious LDAP or JNDI lookup strings into logged inputs. This enables unauthenticated system compromise across vulnerable enterprise Java applications.',
     remediationSteps: [
       {
         step: 1,
-        title: 'Patch / Dependency Cut',
+        title: 'Immediate Remediation / Isolation',
         badge: 'Hard Fix',
         badgeColor: 'text-primary',
         description:
-          'Upgrade Apache Log4j dependencies to version 2.17.1 or apply JVM parameter -Dlog4j2.formatMsgNoLookups=true across all services.',
+          'Upgrade Apache Log4j dependencies to version 2.17.1 or apply JVM parameter -Dlog4j2.formatMsgNoLookups=true across all services. Isolate unpatched workloads from untrusted network ingress.',
       },
       {
         step: 2,
-        title: 'SIEM Egress Query Plan',
-        badge: 'Recommended Query',
+        title: 'Vulnerable Asset Inventory Discovery',
+        badge: 'Asset Scan',
+        badgeColor: 'text-tertiary-container',
+        description:
+          'Enumerate all deployed Java artifacts using software bill of materials (SBOM) scanning to locate embedded log4j-core JARs in transitive dependencies and legacy microservices.',
+      },
+      {
+        step: 3,
+        title: 'Egress Monitoring & Exploit Detection',
+        badge: 'SIEM Detection',
         badgeColor: 'text-secondary',
         description:
-          'Search network egress telemetry for anomalous outbound LDAP/RMI network traffic (ports 389, 636, 1099, 1389) from application hosts.',
+          'Search network egress telemetry for anomalous outbound LDAP/RMI network traffic (ports 389, 636, 1099, 1389) from application hosts and deploy IDS signatures for JNDI exploit strings.',
       },
     ],
     evidence: {
       nvd: {
         abstract:
-          'Apache Log4j2 2.0-beta9 through 2.15.0 JNDI features used in configuration, log messages, and parameters do not protect against attacker-controlled LDAP and other JNDI related endpoints. An attacker who can control log messages or log message parameters can execute arbitrary code loaded from LDAP servers when message lookup substitution is enabled.',
+          'Apache Log4j2 versions 2.0-beta9 through 2.15.0 (excluding security releases 2.12.2, 2.12.3, and 2.3.1) JNDI features used in configuration, log messages, and parameters do not protect against attacker-controlled LDAP and other JNDI related endpoints. An attacker who can control log messages or log message parameters can execute arbitrary code loaded from LDAP servers when message lookup substitution is enabled. From log4j 2.15.0, this behavior has been disabled by default. In version 2.16.0 (and 2.12.2, 2.12.3, 2.3.1), this functionality has been completely removed. Note that this vulnerability is specific to log4j-core and does not affect log4net, log4cxx, or other Apache Logging Services projects.',
         evaluatedAgo: '14m ago',
         vectors: [
           { label: 'ATTACK VECTOR (AV)', value: 'Network (AV:N)' },
@@ -133,7 +143,7 @@ export const DEMO_CVE_PRESETS: Record<string, CveData> = {
         percentile: '99.8th Percentile',
         percentileSub: 'Higher than 99.8% of 220,000+ indexed CVEs',
         interpretiveNote:
-          'EPSS calculates probability of exploitation activity, NOT structural impact. When combined with CVSS 10.0 and KEV presence, risk triage reaches maximum deterministic severity.',
+          'EPSS estimates the likelihood of exploitation activity within 30 days based on global threat telemetry. It does not measure technical severity or prove exploitation.',
       },
     },
   },
@@ -154,22 +164,31 @@ export const DEMO_CVE_PRESETS: Record<string, CveData> = {
     priorityBadge: 'Priority 2: Expedited Patching Cycle',
     priorityColor: 'text-tertiary-container',
     priorityContainerColor: 'bg-tertiary-container/20 border-tertiary-container/30',
+    summary:
+      'Apple iOS and macOS contain a zero-day vulnerability in undocumented hardware memory-mapped I/O (MMIO) registers. Attackers can bypass hardware page protections to modify sensitive kernel state. Observed in sophisticated in-the-wild targeted cyber espionage campaigns.',
     rationale:
-      'Targeted zero-day kernel write primitive bypassing hardware page protection via undocumented MMIO registers. Significant target sophistication observed in APT campaigns, requiring rapid mobile OS upgrade rollouts.',
+      'Apple iOS/macOS MMIO zero-day allows attackers to bypass hardware security layers to modify sensitive kernel state. Documented in-wild exploitation for targeted surveillance warrants expedited patching across all enterprise mobile and workstation endpoints.',
     remediationSteps: [
       {
         step: 1,
-        title: 'OS Software Update',
+        title: 'Immediate Remediation / Isolation',
         badge: 'Vendor Patch',
         badgeColor: 'text-primary',
-        description: 'Update Apple devices to iOS 16.5.1(a) / macOS Ventura 13.4.1(a) or higher immediately.',
+        description: 'Update Apple devices to iOS 16.5.1(a) / macOS Ventura 13.4.1(a) or higher immediately to close kernel MMIO bypass vectors.',
       },
       {
         step: 2,
-        title: 'MDM Compliance Audit',
-        badge: 'Fleet Policy',
+        title: 'Vulnerable Asset Inventory Discovery',
+        badge: 'Fleet Audit',
+        badgeColor: 'text-tertiary-container',
+        description: 'Audit mobile device management (MDM) enrollment across enterprise fleet to identify endpoints running unpatched iOS/macOS versions.',
+      },
+      {
+        step: 3,
+        title: 'Egress Monitoring & Exploit Detection',
+        badge: 'Syslog Monitor',
         badgeColor: 'text-secondary',
-        description: 'Enforce MDM baseline policies restricting unpatched endpoints from enterprise SSO and corporate mail.',
+        description: 'Enforce MDM compliance baselines restricting unpatched endpoints from enterprise SSO and monitor device logs for anomalous kernel panics.',
       },
     ],
     evidence: {
@@ -199,7 +218,7 @@ export const DEMO_CVE_PRESETS: Record<string, CveData> = {
         percentile: '97.4th Percentile',
         percentileSub: 'Higher than 97.4% of indexed CVEs',
         interpretiveNote:
-          'High probability coupled with hardware MMIO bypass mechanism warrants expedited patching priority for mobile endpoints.',
+          'EPSS estimates the likelihood of exploitation activity within 30 days based on global threat telemetry. High probability coupled with hardware MMIO bypass mechanism warrants expedited patching priority.',
       },
     },
   },
@@ -222,20 +241,29 @@ export const DEMO_CVE_PRESETS: Record<string, CveData> = {
     priorityContainerColor: 'bg-error-container/20 border-error/20',
     rationale:
       'Bypasses Office Protected View via file: links containing exclamation points. Enables local NTLM hash exfiltration and remote code execution with minimal user interaction upon previewing untrusted emails.',
+    summary:
+      'Microsoft Outlook contains a remote code execution vulnerability bypassing Office Protected View when handling MonikerLink hyperlinks. An attacker can force local NTLM hash transmission or execute arbitrary code upon email preview without user interaction.',
     remediationSteps: [
       {
         step: 1,
-        title: 'Office Monthly Enterprise Update',
+        title: 'Immediate Remediation / Isolation',
         badge: 'Critical Patch',
         badgeColor: 'text-primary',
-        description: 'Deploy Microsoft February 2024 security updates across Microsoft 365 Apps and Office 2016-2019.',
+        description: 'Deploy Microsoft February 2024 security updates across Microsoft 365 Apps and Office 2016-2019 immediately.',
       },
       {
         step: 2,
-        title: 'Outbound SMB Firewall Rule',
-        badge: 'Network Defense',
+        title: 'Vulnerable Asset Inventory Discovery',
+        badge: 'Endpoint Scan',
+        badgeColor: 'text-tertiary-container',
+        description: 'Query fleet endpoint management to identify all desktop workstations running unpatched Microsoft Outlook builds.',
+      },
+      {
+        step: 3,
+        title: 'Egress Monitoring & Exploit Detection',
+        badge: 'Perimeter Block',
         badgeColor: 'text-secondary',
-        description: 'Block outbound TCP port 445 at edge firewalls to prevent NTLM hash relay to external servers.',
+        description: 'Block outbound TCP port 445 at perimeter firewalls to prevent NTLM credential relaying and alert on outbound SMB egress attempts.',
       },
     ],
     evidence: {

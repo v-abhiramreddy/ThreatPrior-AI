@@ -317,6 +317,8 @@ export function mapBackendToCveData(res: VulnerabilityApiResponse): CveData {
     title: norm?.title || `Vulnerability ${res.cve_id}`,
     cve: res.cve_id,
     desc: norm?.description || 'Normalized threat intelligence record.',
+    summary: norm?.description || 'Normalized threat intelligence record.',
+    technicalDescription: norm?.description || nvd.error_message || 'NVD record telemetry.',
     severity,
     severityColor: severityColors[severity],
     cvss: cvssScore,

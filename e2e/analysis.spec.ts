@@ -470,6 +470,13 @@ test.describe('Explicit Analysis, Clean Initial State, and Stale Result Preventi
   });
 
   test('Previously saved Analysis History remains intact', async ({ page }) => {
+    await page.route('**/api/history**', route =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ items: [] }),
+      })
+    );
     await page.goto('/#history');
     await expect(page.locator('h1')).toContainText('Analysis History & Triage Queue');
     const rows = page.locator('#auditTableBody tr');

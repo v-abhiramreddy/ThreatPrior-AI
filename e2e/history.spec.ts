@@ -2,6 +2,14 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Analysis History & Triage Queue Page', () => {
   test.beforeEach(async ({ page }) => {
+    // Mock backend history endpoint to return empty items so the test deterministically verifies the 6-row demo history
+    await page.route('**/api/history**', route =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ items: [] }),
+      })
+    );
     await page.goto('/#history');
   });
 

@@ -29,9 +29,6 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab, dataMod
               <span className="font-headline-sm text-headline-sm text-on-surface tracking-tight font-semibold">
                 ThreatPrior AI
               </span>
-              <span className="font-label-sm text-label-sm px-space-xs py-0.5 rounded-lg bg-surface-container-high text-on-surface-variant font-code-sm uppercase hidden sm:inline">
-                v1.2 PROTOTYPE
-              </span>
             </div>
           </div>
 

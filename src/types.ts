@@ -16,6 +16,8 @@ export interface CveData {
   title: string;
   cve: string;
   desc: string;
+  summary?: string;
+  technicalDescription?: string;
   severity: SeverityLevel;
   severityColor: string;
   cvss: string;
