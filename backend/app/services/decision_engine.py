@@ -54,16 +54,21 @@ MANDATORY RULES AND SAFETY INVARIANTS:
 7. DECISION SUPPORT ONLY: This service provides operational triage support only. Do not propose or execute destructive commands or automated exploitation.
 8. REMEDIATION GROUNDING: In 'recommended_action', focus on operational security procedures (e.g. asset inventory, network isolation, patch rollout). Do not present model-extrapolated patch versions or CLI commands as authoritative directives.
 
-OUTPUT FORMAT:
-You must respond with ONLY a valid, parseable JSON object matching this exact schema:
+OUTPUT FORMAT AND LENGTH CONSTRAINTS:
+You must respond with ONLY a single, valid, complete parseable JSON object matching this exact schema:
 {
   "priority": "Critical" | "High" | "Medium" | "Low",
-  "rationale": "Concise 1-3 sentence summary grounded strictly in the evidence.",
-  "risk_factors": ["Evidence-backed risk factor 1", "Evidence-backed risk factor 2"],
-  "recommended_action": "Specific next operational security action (e.g. immediate patching, compensating controls, asset inventory).",
-  "evidence_limitations": ["Limitation 1", "Limitation 2"]
+  "rationale": "Concise 1-2 sentence summary strictly under 60 words grounded in the evidence.",
+  "risk_factors": ["Evidence-backed risk factor 1 (max 20 words)", "Evidence-backed risk factor 2 (max 20 words)"],
+  "recommended_action": "Specific next operational security action strictly under 30 words.",
+  "evidence_limitations": ["Limitation 1 (max 20 words)"]
 }
-Do not include any conversational preamble or markdown code blocks other than the JSON object itself.
+STRICT LENGTH CONSTRAINTS:
+- Keep the entire JSON output concise, bounded, and strictly under 350 words total.
+- Keep 'rationale' strictly 1-2 sentences (under 60 words).
+- Provide 2 to 4 concise strings in 'risk_factors' (under 20 words each).
+- Keep 'recommended_action' strictly under 30 words.
+- Do not output preamble, markdown fences, commentary, or unclosed brackets. The output MUST end with the closing brace '}'.
 """
 
 
@@ -84,18 +89,29 @@ class BedrockFailureCategory(str, Enum):
     MODEL_ACCESS = "model_access"
     CREDENTIALS_OR_AUTH = "credentials_or_auth"
     MALFORMED_OUTPUT = "malformed_output"
+    OUTPUT_TRUNCATED = "output_truncated"
     UNKNOWN = "unknown"
 
     @property
     def is_retryable(self) -> bool:
-        """Only transient, network, timeout, rate-limited, or malformed LLM responses should be retried."""
+        """Only transient, network, timeout, rate-limited, malformed, or truncated LLM responses should be retried."""
         return self in (
             BedrockFailureCategory.THROTTLING,
             BedrockFailureCategory.TRANSIENT_SERVICE,
             BedrockFailureCategory.CONNECTION,
             BedrockFailureCategory.TIMEOUT,
             BedrockFailureCategory.MALFORMED_OUTPUT,
+            BedrockFailureCategory.OUTPUT_TRUNCATED,
         )
+
+
+class BedrockTruncatedOutputError(ValueError):
+    """Raised when Amazon Bedrock stops generation prematurely due to maxTokens limit."""
+
+    def __init__(self, message: str, stop_reason: str, output_tokens: Optional[int] = None):
+        super().__init__(message)
+        self.stop_reason = stop_reason
+        self.output_tokens = output_tokens
 
 
 def classify_bedrock_error(e: Exception) -> tuple[BedrockFailureCategory, str, bool]:
@@ -156,7 +172,11 @@ def classify_bedrock_error(e: Exception) -> tuple[BedrockFailureCategory, str, b
     )):
         return BedrockFailureCategory.CONNECTION, type(e).__name__, True
 
-    # 9. Malformed model response / parsing (Retryable for LLM generation)
+    # 9. Truncated model response due to maxTokens limit (Retryable with bounded token budget adjustment)
+    if isinstance(e, BedrockTruncatedOutputError):
+        return BedrockFailureCategory.OUTPUT_TRUNCATED, "MaxTokensReached", True
+
+    # 10. Malformed model response / parsing (Retryable for LLM generation)
     if isinstance(e, (ValueError, json.JSONDecodeError, ValidationError)):
         return BedrockFailureCategory.MALFORMED_OUTPUT, type(e).__name__, True
 
@@ -228,7 +248,15 @@ def diagnose_bedrock_error(e: Exception, model_id: str, region_name: str) -> str
             "AWS profile (~/.aws/credentials), or an attached IAM role."
         )
 
-    # 7. Generic fallback with key scrubbing
+    # 7. Truncated output due to token exhaustion
+    if isinstance(e, BedrockTruncatedOutputError):
+        tok_str = f" after {e.output_tokens} output tokens" if e.output_tokens else ""
+        return (
+            f"AWS Bedrock model '{model_id}' output truncated{tok_str} [stopReason='{e.stop_reason}'] in region '{region_name}'. "
+            "Response exceeded output token limit before completing valid JSON."
+        )
+
+    # 8. Generic fallback with key scrubbing
     safe_msg = re.sub(r"(?i)(key|secret|token|password)[=:]\s*[\w\-\/\+]{8,}", r"\1=[REDACTED]", error_msg)
     return f"AWS Bedrock error [{code_tag}]: {safe_msg}"
 
@@ -249,12 +277,14 @@ class DecisionEngine:
         model_id: Optional[str] = None,
         allow_fallback: Optional[bool] = None,
         max_concurrent_bedrock: int = 5,
+        max_tokens: Optional[int] = None,
     ):
         self.region_name = region_name or settings.aws_region
         self.model_id = model_id or settings.bedrock_model_id
         self.allow_fallback = (
             allow_fallback if allow_fallback is not None else settings.allow_baseline_fallback
         )
+        self.max_tokens = max_tokens or settings.bedrock_max_tokens
         self._injected_client = bedrock_client
         self._cached_bedrock_client = None
         self.strands_client = strands_client_instance or strands_client
@@ -883,6 +913,14 @@ class DecisionEngine:
 
         attempt = 0
         max_retries = settings.max_decision_retries
+        deadline = time.monotonic() + settings.decision_timeout_seconds
+
+        current_max_tokens = self.max_tokens
+        current_prompt = prompt_text
+        truncation_retries = 0
+        malformed_retries = 0
+        last_stop_reason: Optional[str] = None
+        last_usage: Dict[str, Any] = {}
 
         while attempt <= max_retries:
             attempt += 1
@@ -891,9 +929,21 @@ class DecisionEngine:
             error_code: str = ""
             retryable: bool = False
 
+            # Check overall request deadline before starting attempt
+            remaining_time = deadline - time.monotonic()
+            if remaining_time < 3.0 and attempt > 1:
+                logger.warning(
+                    "Bedrock Stage 2 request deadline nearly exhausted (%.2fs remaining < 3.0s threshold). Aborting retries.",
+                    remaining_time,
+                )
+                break
+
             try:
                 bedrock = self._get_bedrock_client()
                 loop = asyncio.get_running_loop()
+
+                call_tokens = current_max_tokens
+                call_prompt = current_prompt
 
                 def _call_bedrock():
                     return bedrock.converse(
@@ -901,20 +951,38 @@ class DecisionEngine:
                         messages=[
                             {
                                 "role": "user",
-                                "content": [{"text": prompt_text}],
+                                "content": [{"text": call_prompt}],
                             }
                         ],
                         system=[{"text": STAGE2_SYSTEM_PROMPT}],
                         inferenceConfig={
                             "temperature": 0.0,
-                            "maxTokens": 1024,
+                            "maxTokens": call_tokens,
                         },
                     )
+
+                call_timeout = min(settings.decision_timeout_seconds, max(1.0, remaining_time))
 
                 async with self._bedrock_semaphore:
                     bedrock_resp = await asyncio.wait_for(
                         loop.run_in_executor(None, _call_bedrock),
-                        timeout=settings.decision_timeout_seconds,
+                        timeout=call_timeout,
+                    )
+
+                latency_ms = round((time.perf_counter() - t_start) * 1000, 2)
+                stop_reason = bedrock_resp.get("stopReason")
+                usage = bedrock_resp.get("usage", {})
+                input_tokens = usage.get("inputTokens")
+                output_tokens = usage.get("outputTokens")
+                last_stop_reason = stop_reason
+                last_usage = usage
+
+                # 1. Distinguish genuine token truncation before JSON parsing
+                if stop_reason in ("max_tokens", "length"):
+                    raise BedrockTruncatedOutputError(
+                        f"Bedrock output truncated before JSON completion (stopReason='{stop_reason}', outputTokens={output_tokens}).",
+                        stop_reason=stop_reason,
+                        output_tokens=output_tokens,
                     )
 
                 output_message = bedrock_resp.get("output", {}).get("message", {})
@@ -925,13 +993,37 @@ class DecisionEngine:
                     raise ValueError("Bedrock converse returned empty content.")
 
                 # Both stages succeeded! Return genuine dual-model decision
-                return self._parse_and_validate_ai_json(raw_text, resp, decider_eval)
+                decision = self._parse_and_validate_ai_json(raw_text, resp, decider_eval)
+
+                # Safe diagnostics logging (never secrets or unscrubbed tokens)
+                logger.info(
+                    "Bedrock Stage 2 inference succeeded [cve=%s, model=%s, region=%s, stopReason=%s, inputTokens=%s, outputTokens=%s, latency=%.2fms]",
+                    resp.cve_id,
+                    self.model_id,
+                    self.region_name,
+                    stop_reason,
+                    input_tokens,
+                    output_tokens,
+                    latency_ms,
+                    extra={
+                        "cve_id": resp.cve_id,
+                        "model_id": self.model_id,
+                        "region": self.region_name,
+                        "stop_reason": stop_reason,
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "latency_ms": latency_ms,
+                    },
+                )
+                return decision
 
             except Exception as e:
                 latency_ms = round((time.perf_counter() - t_start) * 1000, 2)
                 category, error_code, retryable = classify_bedrock_error(e)
 
-                if isinstance(e, asyncio.TimeoutError):
+                if isinstance(e, BedrockTruncatedOutputError):
+                    bedrock_error = diagnose_bedrock_error(e, self.model_id, self.region_name)
+                elif isinstance(e, asyncio.TimeoutError):
                     bedrock_error = f"Bedrock invocation timed out after {settings.decision_timeout_seconds}s (attempt {attempt}/{max_retries + 1})."
                 elif isinstance(e, (botocore.exceptions.ClientError, botocore.exceptions.BotoCoreError)):
                     bedrock_error = diagnose_bedrock_error(e, self.model_id, self.region_name)
@@ -941,13 +1033,15 @@ class DecisionEngine:
                     bedrock_error = f"Unexpected error during Bedrock invocation: {str(e)}"
 
                 logger.warning(
-                    "Bedrock Stage 2 invocation failed [attempt %d/%d, category=%s, code=%s, retryable=%s, latency=%.2fms]: %s",
+                    "Bedrock Stage 2 invocation failed [attempt %d/%d, category=%s, code=%s, retryable=%s, latency=%.2fms, stopReason=%s, outputTokens=%s]: %s",
                     attempt,
                     max_retries + 1,
                     category.value,
                     error_code,
                     retryable,
                     latency_ms,
+                    getattr(e, "stop_reason", last_stop_reason),
+                    getattr(e, "output_tokens", last_usage.get("outputTokens")),
                     bedrock_error,
                     extra={
                         "failure_category": category.value,
@@ -958,11 +1052,55 @@ class DecisionEngine:
                         "region": self.region_name,
                         "error_code": error_code,
                         "retryable": retryable,
+                        "stop_reason": getattr(e, "stop_reason", last_stop_reason),
+                        "output_tokens": getattr(e, "output_tokens", last_usage.get("outputTokens")),
                     },
                 )
 
                 if retryable and attempt <= max_retries:
-                    sleep_sec = self._compute_backoff_sleep(attempt)
+                    rem = deadline - time.monotonic()
+                    if rem < 3.0:
+                        logger.warning(
+                            "Bedrock Stage 2 deadline budget exhausted (%.2fs remaining < 3.0s). Skipping retry.",
+                            rem,
+                        )
+                        break
+
+                    if category == BedrockFailureCategory.OUTPUT_TRUNCATED:
+                        if truncation_retries >= 1:
+                            logger.warning(
+                                "Bedrock truncation recovery budget exhausted (1/1). Avoiding repeated truncation loop."
+                            )
+                            break
+                        truncation_retries += 1
+                        current_max_tokens = min(current_max_tokens * 2, 4096)
+                        current_prompt = (
+                            prompt_text
+                            + "\n\nCRITICAL: Previous response exceeded token budget and was truncated. "
+                            "Keep your response extremely brief: rationale max 1 sentence, recommended_action max 20 words, exactly 2 risk factors."
+                        )
+                        logger.info(
+                            "Attempting bounded recovery for truncated Bedrock output: expanded maxTokens to %d with strict brevity guidance.",
+                            current_max_tokens,
+                        )
+                    elif category == BedrockFailureCategory.MALFORMED_OUTPUT:
+                        if malformed_retries >= 1:
+                            logger.warning(
+                                "Bedrock malformed output recovery budget exhausted (1/1). Avoiding repeated malformed JSON loop."
+                            )
+                            break
+                        malformed_retries += 1
+                        current_prompt = (
+                            prompt_text
+                            + "\n\nCRITICAL: Previous response was not valid JSON. "
+                            "You MUST output ONLY a valid RFC-8259 JSON object starting with '{' and ending with '}'. "
+                            "No conversational preamble, markdown code fences, or trailing notes."
+                        )
+                        logger.info(
+                            "Attempting bounded recovery for malformed Bedrock JSON output with structured-output instruction."
+                        )
+
+                    sleep_sec = min(self._compute_backoff_sleep(attempt), max(0.1, rem - 2.0))
                     logger.info(
                         "Retrying Bedrock invocation for %s in %.2fs (jittered exponential backoff)...",
                         resp.cve_id,

@@ -58,6 +58,12 @@ class Settings(BaseSettings):
             "(e.g., 'anthropic.claude-sonnet-4-6', 'us.anthropic.claude-sonnet-4-6', or 'au.anthropic.claude-sonnet-4-6')."
         ),
     )
+    bedrock_max_tokens: int = Field(
+        default=2048,
+        ge=256,
+        le=8192,
+        description="Maximum output token budget for Amazon Bedrock Stage 2 inference",
+    )
     strands_decider_model_id: str = Field(
         default="strands-decider-2b",
         description="Strands Decider 2B model identifier (e.g. 'strands-decider-2b' for remote API, or local checkpoint path)",
