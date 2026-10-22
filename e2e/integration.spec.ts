@@ -270,8 +270,11 @@ test.describe('Frontend–Backend Integration Tests', () => {
     await expect(page.locator('#state-error')).toBeVisible();
     await expect(page.locator('#state-error')).toContainText('Backend API service is offline or unreachable');
 
-    // 3. Clicking a preset pill when backend is offline also attempts live analysis, fails, and DOES NOT silently render fixture
+    // 3. Selecting a quick-target pill populates target without running analysis unintentionally
     await page.locator('button[data-cve="CVE-2024-21413"]').click();
+    await expect(page.locator('#cve-input')).toHaveValue('CVE-2024-21413');
+    // Clicking Analyze Vulnerability triggers live request, fails when offline, and DOES NOT silently render fixture
+    await page.locator('#btn-analyze').click();
     await expect(page.locator('#state-error')).toBeVisible();
     await expect(page.locator('#state-error')).toContainText('Backend API service is offline or unreachable');
 
@@ -328,8 +331,13 @@ test.describe('Frontend–Backend Integration Tests', () => {
     await expect(page.locator('#demo-mode-indicator')).toContainText('Ready to Analyze');
     await expect(page.locator('#pipeline-mode-badge')).toContainText('Ready to Analyze');
 
-    // Click quick-select pill: initiates live API call
+    // Click quick-select pill: populates input without auto-analyzing
     await page.locator('button[data-cve="CVE-2024-21413"]').click();
+    await expect(page.locator('#cve-input')).toHaveValue('CVE-2024-21413');
+    await expect(page.locator('#target-cve-id')).not.toBeVisible();
+
+    // Explicitly click Analyze Vulnerability: initiates live API call
+    await page.locator('#btn-analyze').click();
 
     // After live response: Live Intelligence
     await expect(page.locator('#demo-mode-indicator')).toContainText('Live Intelligence');

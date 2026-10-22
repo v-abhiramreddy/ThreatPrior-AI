@@ -32,7 +32,9 @@ test.describe('Navigation & Routing (Phase 6.2 Landing Page & Deep Links)', () =
     await page.locator('#nav-analyze-btn').click();
     await expect(page).toHaveURL(/.*#analyze/);
     await expect(page.locator('#nav-analyze-btn')).toHaveAttribute('aria-current', 'page');
-    await expect(page.locator('#target-cve-id')).toBeVisible();
+    await expect(page.locator('#cve-search-card')).toBeVisible();
+    await expect(page.locator('#target-cve-id')).not.toBeVisible();
+    await expect(page.locator('#state-empty')).toBeVisible();
 
     // Navigate to History
     await page.locator('#nav-history-btn').click();
@@ -50,8 +52,10 @@ test.describe('Navigation & Routing (Phase 6.2 Landing Page & Deep Links)', () =
   test('should support deep linking to #analyze and #history', async ({ page }) => {
     // Deep link to #analyze
     await page.goto('/#analyze');
-    await expect(page.locator('#target-cve-id')).toBeVisible();
     await expect(page.locator('#nav-analyze-btn')).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('#cve-search-card')).toBeVisible();
+    await expect(page.locator('#target-cve-id')).not.toBeVisible();
+    await expect(page.locator('#state-empty')).toBeVisible();
 
     // Deep link to #history
     await page.goto('/#history');
@@ -62,10 +66,11 @@ test.describe('Navigation & Routing (Phase 6.2 Landing Page & Deep Links)', () =
   test('should support direct URL query parameter for CVE deep linking (?cve=CVE-2023-38606)', async ({ page }) => {
     await page.goto('/?cve=CVE-2023-38606');
 
-    // Direct CVE parameter routes to analyze and preselects the requested CVE
+    // Direct CVE parameter routes to analyze and prefills the requested CVE without auto-analysis
     await expect(page.locator('#nav-analyze-btn')).toHaveAttribute('aria-current', 'page');
-    await expect(page.locator('#target-cve-id')).toContainText('CVE-2023-38606');
-    await expect(page.locator('#target-title')).toContainText('Operation Triangulation Kernel Zero-Day');
+    await expect(page.locator('#cve-input')).toHaveValue('CVE-2023-38606');
+    await expect(page.locator('#target-cve-id')).not.toBeVisible();
+    await expect(page.locator('#state-empty')).toBeVisible();
   });
 
   test('should support browser back and forward navigation without page reload or loops', async ({ page }) => {
@@ -74,7 +79,8 @@ test.describe('Navigation & Routing (Phase 6.2 Landing Page & Deep Links)', () =
 
     // Step forward to #analyze
     await page.locator('#nav-analyze-btn').click();
-    await expect(page.locator('#target-cve-id')).toBeVisible();
+    await expect(page.locator('#cve-search-card')).toBeVisible();
+    await expect(page.locator('#target-cve-id')).not.toBeVisible();
 
     // Step forward to #history
     await page.locator('#nav-history-btn').click();
@@ -82,7 +88,8 @@ test.describe('Navigation & Routing (Phase 6.2 Landing Page & Deep Links)', () =
 
     // Browser back to #analyze
     await page.goBack();
-    await expect(page.locator('#target-cve-id')).toBeVisible();
+    await expect(page.locator('#cve-search-card')).toBeVisible();
+    await expect(page.locator('#target-cve-id')).not.toBeVisible();
     await expect(page.locator('#nav-analyze-btn')).toHaveAttribute('aria-current', 'page');
 
     // Browser back to Home
@@ -92,7 +99,8 @@ test.describe('Navigation & Routing (Phase 6.2 Landing Page & Deep Links)', () =
 
     // Browser forward to #analyze
     await page.goForward();
-    await expect(page.locator('#target-cve-id')).toBeVisible();
+    await expect(page.locator('#cve-search-card')).toBeVisible();
+    await expect(page.locator('#target-cve-id')).not.toBeVisible();
     await expect(page.locator('#nav-analyze-btn')).toHaveAttribute('aria-current', 'page');
   });
 
@@ -104,9 +112,10 @@ test.describe('Navigation & Routing (Phase 6.2 Landing Page & Deep Links)', () =
     await expect(row).toBeVisible();
     await row.getByRole('button', { name: 'View Analysis' }).click();
 
-    // Should switch to Analyze tab and display CVE-2023-38606
+    // Should switch to Analyze tab and prefill CVE-2023-38606 in search input without auto-analysis
     await expect(page).toHaveURL(/.*#analyze/);
-    await expect(page.locator('#target-cve-id')).toContainText('CVE-2023-38606');
-    await expect(page.locator('#target-title')).toContainText('Operation Triangulation Kernel Zero-Day');
+    await expect(page.locator('#cve-input')).toHaveValue('CVE-2023-38606');
+    await expect(page.locator('#target-cve-id')).not.toBeVisible();
+    await expect(page.locator('#state-empty')).toBeVisible();
   });
 });

@@ -175,7 +175,18 @@ test.describe('Vulnerability Analysis Page', () => {
   });
 
 
-  test('should render default benchmark Log4Shell with correct scores and priority', async ({ page }) => {
+  test('should render clean initial state on page entry and only render Log4Shell after clicking Analyze Vulnerability', async ({ page }) => {
+    // 1. Initial page entry shows empty state, not loaded results
+    await expect(page.locator('#cve-search-card')).toBeVisible();
+    await expect(page.locator('#cve-input')).toHaveValue('CVE-2021-44228');
+    await expect(page.locator('#target-cve-id')).not.toBeVisible();
+    await expect(page.locator('#state-empty')).toBeVisible();
+    await expect(page.locator('#state-empty')).toContainText('Enter a CVE ID and select Analyze Vulnerability to begin.');
+
+    // 2. Click Analyze Vulnerability explicitly
+    await page.locator('#btn-analyze').click();
+    await expect(page.locator('#state-loaded')).toBeVisible();
+
     await expect(page.locator('#target-cve-id')).toContainText('CVE-2021-44228');
     await expect(page.locator('#target-title')).toContainText('Log4Shell');
 
@@ -190,21 +201,35 @@ test.describe('Vulnerability Analysis Page', () => {
     await expect(page.locator('#ai-rationale-text')).toContainText('Log4j2 JNDI remote code execution');
 
     // Playbook guidance steps
-    await expect(page.locator('text=Patch / Dependency Cut')).toBeVisible();
-    await expect(page.locator('text=SIEM Egress Query Plan')).toBeVisible();
+    await expect(page.locator('text=Immediate Remediation / Isolation')).toBeVisible();
+    await expect(page.locator('text=Vulnerable Asset Inventory Discovery')).toBeVisible();
   });
 
-  test('should switch dynamically when clicking CVE preset pills', async ({ page }) => {
-    // Click Apple MMIO preset pill
+  test('should populate search input when clicking quick live target pills without unintentional analysis', async ({ page }) => {
+    // 1. Click Apple MMIO preset pill: populates input, does NOT trigger analysis
     await page.locator('button[data-cve="CVE-2023-38606"]').click();
+    await expect(page.locator('#cve-input')).toHaveValue('CVE-2023-38606');
+    await expect(page.locator('#target-cve-id')).not.toBeVisible();
+    await expect(page.locator('#state-empty')).toBeVisible();
+
+    // Now trigger analysis explicitly
+    await page.locator('#btn-analyze').click();
+    await expect(page.locator('#state-loaded')).toBeVisible();
     await expect(page.locator('#target-cve-id')).toContainText('CVE-2023-38606');
     await expect(page.locator('#target-title')).toContainText('Operation Triangulation Kernel Zero-Day');
     await expect(page.locator('#metric-cvss')).toContainText('8.8');
     await expect(page.locator('#metric-severity-badge')).toContainText('HIGH');
     await expect(page.locator('#ai-priority-chip')).toContainText('Priority 2: Expedited Patching Cycle');
 
-    // Click Outlook RCE preset pill
+    // 2. Click Outlook RCE preset pill: clears stale result, populates input without auto-analysis
     await page.locator('button[data-cve="CVE-2024-21413"]').click();
+    await expect(page.locator('#cve-input')).toHaveValue('CVE-2024-21413');
+    await expect(page.locator('#target-cve-id')).not.toBeVisible();
+    await expect(page.locator('#state-empty')).toBeVisible();
+
+    // Trigger analysis explicitly for Outlook
+    await page.locator('#btn-analyze').click();
+    await expect(page.locator('#state-loaded')).toBeVisible();
     await expect(page.locator('#target-cve-id')).toContainText('CVE-2024-21413');
     await expect(page.locator('#target-title')).toContainText('MonikerLink Outlook Remote Code Execution');
     await expect(page.locator('#metric-cvss')).toContainText('9.8');
@@ -267,6 +292,10 @@ test.describe('Vulnerability Analysis Page', () => {
   });
 
   test('should toggle evidence accordions with aria-expanded and visibility', async ({ page }) => {
+    // Explicitly click analyze to load evidence accordions
+    await page.locator('#btn-analyze').click();
+    await expect(page.locator('#state-loaded')).toBeVisible();
+
     const nvdToggle = page.locator('#accordion-nvd button.accordion-toggle');
     const nvdBody = page.locator('#nvd-body');
 
@@ -299,5 +328,159 @@ test.describe('Vulnerability Analysis Page', () => {
     await epssToggle.click();
     await expect(epssToggle).toHaveAttribute('aria-expanded', 'false');
     await expect(epssBody).not.toBeVisible();
+  });
+});
+
+test.describe('Explicit Analysis, Clean Initial State, and Stale Result Prevention', () => {
+  test('Opening Vulnerability Analysis does not automatically call the analysis API', async ({ page }) => {
+    let apiCallCount = 0;
+    page.on('request', (req) => {
+      if (req.url().includes('/api/vulnerabilities')) {
+        apiCallCount++;
+      }
+    });
+
+    await page.goto('/#analyze');
+    // Allow any initial render effects to settle
+    await page.waitForTimeout(500);
+
+    expect(apiCallCount).toBe(0);
+    await expect(page.locator('#state-empty')).toBeVisible();
+    await expect(page.locator('#target-cve-id')).not.toBeVisible();
+    await expect(page.locator('#state-loaded')).not.toBeVisible();
+  });
+
+  test('Navigating from Home to Vulnerability Analysis does not automatically display Log4Shell results', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('h1')).toContainText('Know What to Fix First.');
+
+    // Click Analyze navigation button in header
+    await page.locator('#nav-analyze-btn').click();
+    await expect(page).toHaveURL(/.*#analyze/);
+
+    // Verify clean initial state without old or pre-rendered results
+    await expect(page.locator('#cve-search-card')).toBeVisible();
+    await expect(page.locator('#target-cve-id')).not.toBeVisible();
+    await expect(page.locator('#state-loaded')).not.toBeVisible();
+    await expect(page.locator('#state-empty')).toBeVisible();
+    await expect(page.locator('#state-empty')).toContainText('Enter a CVE ID and select Analyze Vulnerability to begin.');
+  });
+
+  test('Selecting a quick-target CVE does not trigger analysis unintentionally', async ({ page }) => {
+    let apiCallCount = 0;
+    page.on('request', (req) => {
+      if (req.url().includes('/api/vulnerabilities')) {
+        apiCallCount++;
+      }
+    });
+
+    await page.goto('/#analyze');
+    await page.locator('button[data-cve="CVE-2023-38606"]').click();
+
+    // Verify input is populated but no analysis request was made
+    await expect(page.locator('#cve-input')).toHaveValue('CVE-2023-38606');
+    expect(apiCallCount).toBe(0);
+    await expect(page.locator('#target-cve-id')).not.toBeVisible();
+    await expect(page.locator('#state-empty')).toBeVisible();
+  });
+
+  test('Clicking Analyze Vulnerability triggers the intended request and displays results', async ({ page }) => {
+    await page.route('**/api/vulnerabilities/CVE-2021-44228**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          cve_id: 'CVE-2021-44228',
+          status: 'OK',
+          retrieved_at: '2026-10-16T12:00:00Z',
+          normalized: {
+            title: 'Log4Shell Apache Log4j2 JNDI RCE',
+            description: 'Apache Log4j2 JNDI features do not protect against LDAP endpoints.',
+            primary_severity: 'CRITICAL',
+            cvss_score: 10.0,
+            cvss_version: '3.1',
+            cvss_vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H',
+            is_cisa_kev: true,
+            cisa_required_action: 'Apply updates.',
+            cisa_due_date: '2021-12-24',
+            epss_probability: 0.974,
+            epss_percentile: 0.999,
+            affected_cpe_count: 365,
+          },
+          provenance: {
+            nvd: { source: 'NIST NVD', status: 'AVAILABLE' },
+            cisa_kev: { source: 'CISA KEV', status: 'LISTED' },
+            epss: { source: 'FIRST EPSS', status: 'AVAILABLE' },
+          },
+          decision: {
+            priority: 'Critical',
+            rationale: 'Active Log4Shell exploitation.',
+            risk_factors: ['CISA KEV Listed'],
+            recommended_action: 'Apply immediate patches.',
+            confidence: 0.98,
+            confidence_is_calibrated: false,
+            engine: 'dual-ai',
+            decider_model_id: 'strands-decider-2b',
+            bedrock_model_id: 'au.anthropic.claude-sonnet-4-6',
+            decider_status: 'success',
+            bedrock_status: 'success',
+            decided_at: '2026-10-16T12:00:00Z',
+          },
+          errors: [],
+        }),
+      });
+    });
+
+    await page.goto('/#analyze');
+    await page.locator('#cve-input').fill('CVE-2021-44228');
+    await page.locator('#btn-analyze').click();
+
+    await expect(page.locator('#state-loaded')).toBeVisible();
+    await expect(page.locator('#target-cve-id')).toContainText('CVE-2021-44228');
+  });
+
+  test('Clicking Load Offline Demo Fixture displays clearly labelled demo results', async ({ page }) => {
+    await page.goto('/#analyze');
+    await expect(page.locator('#target-cve-id')).not.toBeVisible();
+
+    // Click Load Offline Demo Fixture
+    await page.locator('#btn-pill-demo-fixture').click();
+
+    // Verify results are visible and clearly labelled as demo data
+    await expect(page.locator('#state-loaded')).toBeVisible();
+    await expect(page.locator('#target-cve-id')).toContainText('CVE-2021-44228');
+    await expect(page.locator('#demo-mode-indicator')).toContainText('Offline Demo');
+    await expect(page.locator('#pipeline-mode-badge')).toContainText('Offline Demo Mode');
+    await expect(page.locator('#data-source-disclaimer')).toContainText('Offline demo fixture');
+  });
+
+  test('A failed live request does not silently display demo results', async ({ page }) => {
+    // Force network failure for live requests
+    await page.route('**/api/vulnerabilities/**', (route) => route.abort('connectionrefused'));
+
+    await page.goto('/#analyze');
+    await page.locator('#cve-input').fill('CVE-2021-44228');
+    await page.locator('#btn-analyze').click();
+
+    // Must show clear error, never silently substitute demo results
+    await expect(page.locator('#state-error')).toBeVisible();
+    await expect(page.locator('#state-error')).toContainText('Backend API service is offline or unreachable');
+    await expect(page.locator('#state-loaded')).not.toBeVisible();
+    await expect(page.locator('#target-cve-id')).not.toBeVisible();
+  });
+
+  test('Previously saved Analysis History remains intact', async ({ page }) => {
+    await page.goto('/#history');
+    await expect(page.locator('h1')).toContainText('Analysis History & Triage Queue');
+    const rows = page.locator('#auditTableBody tr');
+    await expect(rows).toHaveCount(6);
+    await expect(page.locator('#filteredCount')).toContainText('Showing 6 of 6 displayed');
+  });
+
+  test('The Home route still opens correctly', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('h1')).toContainText('Know What to Fix First.');
+    await expect(page.locator('#hero-primary-cta')).toBeVisible();
+    await expect(page.locator('#nav-home-btn')).toHaveAttribute('aria-current', 'page');
   });
 });

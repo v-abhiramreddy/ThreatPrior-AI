@@ -7,6 +7,8 @@ test.describe('Visual Inspection Screenshots', () => {
     // 1. Capture Vulnerability Analysis Page & Components
     await page.goto('/#analyze');
     await page.setViewportSize({ width: 1440, height: 1800 });
+    // Explicitly load demo benchmark fixture to capture full loaded UI components
+    await page.locator('#btn-pill-demo-fixture').click();
     await expect(page.locator('#state-loaded')).toBeVisible();
 
     // Full page analysis screenshot

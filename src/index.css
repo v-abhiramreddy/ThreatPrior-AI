@@ -98,37 +98,37 @@
 
 /* Typography Utilities aligned with Stitch Design System */
 .font-display { font-family: "Inter", sans-serif; }
-.text-display { font-size: 36px; line-height: 44px; letter-spacing: -0.02em; font-weight: 600; }
+.text-display { font-size: 34px; line-height: 42px; letter-spacing: -0.02em; font-weight: 600; }
 
 .font-headline-lg { font-family: "Inter", sans-serif; }
-.text-headline-lg { font-size: 28px; line-height: 36px; letter-spacing: -0.02em; font-weight: 600; }
+.text-headline-lg { font-size: 30px; line-height: 38px; letter-spacing: -0.02em; font-weight: 600; }
 
 .font-headline-md { font-family: "Inter", sans-serif; }
-.text-headline-md { font-size: 20px; line-height: 28px; letter-spacing: -0.01em; font-weight: 600; }
+.text-headline-md { font-size: 22px; line-height: 30px; letter-spacing: -0.01em; font-weight: 600; }
 
 .font-headline-sm { font-family: "Inter", sans-serif; }
-.text-headline-sm { font-size: 16px; line-height: 24px; font-weight: 600; }
+.text-headline-sm { font-size: 17px; line-height: 24px; font-weight: 600; }
 
 .font-body-lg { font-family: "Inter", sans-serif; }
-.text-body-lg { font-size: 16px; line-height: 24px; font-weight: 400; }
+.text-body-lg { font-size: 16px; line-height: 26px; font-weight: 400; }
 
 .font-body-md { font-family: "Inter", sans-serif; }
-.text-body-md { font-size: 14px; line-height: 20px; font-weight: 400; }
+.text-body-md { font-size: 15px; line-height: 22px; font-weight: 400; }
 
 .font-body-sm { font-family: "Inter", sans-serif; }
-.text-body-sm { font-size: 12px; line-height: 16px; font-weight: 400; }
+.text-body-sm { font-size: 13px; line-height: 18px; font-weight: 400; }
 
 .font-code-lg { font-family: "JetBrains Mono", monospace; }
 .text-code-lg { font-size: 14px; line-height: 20px; letter-spacing: -0.01em; font-weight: 500; }
 
 .font-code-md { font-family: "JetBrains Mono", monospace; }
-.text-code-md { font-size: 12px; line-height: 16px; font-weight: 500; }
+.text-code-md { font-size: 13px; line-height: 18px; font-weight: 500; }
 
 .font-code-sm { font-family: "JetBrains Mono", monospace; }
-.text-code-sm { font-size: 11px; line-height: 14px; font-weight: 400; }
+.text-code-sm { font-size: 12px; line-height: 16px; font-weight: 400; }
 
 .font-label-md { font-family: "Inter", sans-serif; }
-.text-label-md { font-size: 12px; line-height: 16px; letter-spacing: 0.02em; font-weight: 500; }
+.text-label-md { font-size: 13px; line-height: 18px; letter-spacing: 0.02em; font-weight: 500; }
 
 .font-label-sm { font-family: "JetBrains Mono", monospace; }
-.text-label-sm { font-size: 10px; line-height: 12px; letter-spacing: 0.05em; font-weight: 600; }
+.text-label-sm { font-size: 12px; line-height: 16px; letter-spacing: 0.04em; font-weight: 600; }

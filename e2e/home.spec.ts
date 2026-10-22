@@ -46,11 +46,13 @@ test.describe('Home Page Refinement & Information Simplification (Phase 6.2)', (
     await expect(howItWorks).toBeInViewport();
   });
 
-  test('Hero Sample CVE pill navigates to Vulnerability Analysis with CVE-2021-44228 prefilled', async ({ page }) => {
+  test('Hero Sample CVE pill navigates to Vulnerability Analysis with CVE-2021-44228 prefilled without auto-analysis', async ({ page }) => {
     await page.locator('#hero-sample-cve-pill').click();
     await expect(page).toHaveURL(/.*#analyze/);
-    await expect(page.locator('#target-cve-id')).toContainText('CVE-2021-44228');
-    await expect(page.locator('#target-title')).toContainText('Log4Shell');
+    await expect(page.locator('#cve-input')).toHaveValue('CVE-2021-44228');
+    await expect(page.locator('#target-cve-id')).not.toBeVisible();
+    await expect(page.locator('#state-empty')).toBeVisible();
+    await expect(page.locator('#state-empty')).toContainText('Enter a CVE ID and select Analyze Vulnerability to begin.');
   });
 
   test('Section 2 — How It Works: renders 3-step structured guidance without jargon', async ({ page }) => {

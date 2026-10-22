@@ -40,8 +40,8 @@ function parseRouteFromLocation(): RouteState {
     }
   }
 
-  // 2. Check for CVE in path (e.g. /vulnerabilities/CVE-2021-44228 or /analyze/CVE-2021-44228)
-  const cveMatch = window.location.pathname.match(/\/(?:vulnerabilities|analyze)\/(CVE-\d{4}-\d{4,})/i);
+  // 2. Check for CVE in path (e.g. /vulnerabilities/CVE-2021-44228, /vulnerability-analysis/CVE-2021-44228, or /analyze/CVE-2021-44228)
+  const cveMatch = window.location.pathname.match(/\/(?:vulnerabilities|vulnerability-analysis|analyze)\/(CVE-\d{4}-\d{4,})/i);
   if (cveMatch) {
     cveParam = cveMatch[1].toUpperCase();
   }
@@ -53,21 +53,42 @@ function parseRouteFromLocation(): RouteState {
 
   // 3. Check hash routes (preserves existing #analyze, #history, #home patterns)
   const cleanHash = hash.split('?')[0];
-  if (cleanHash === '#history' || cleanHash.startsWith('#history/')) {
+  if (
+    cleanHash === '#history' ||
+    cleanHash.startsWith('#history/') ||
+    cleanHash === '#analysis-history' ||
+    cleanHash.startsWith('#analysis-history/')
+  ) {
     return { tab: 'history' };
   }
-  if (cleanHash === '#analyze' || cleanHash.startsWith('#analyze/')) {
+  if (
+    cleanHash === '#analyze' ||
+    cleanHash.startsWith('#analyze/') ||
+    cleanHash === '#vulnerability-analysis' ||
+    cleanHash.startsWith('#vulnerability-analysis/')
+  ) {
     return { tab: 'analyze' };
   }
   if (cleanHash === '#home') {
     return { tab: 'home' };
   }
 
-  // 4. Check pathname routes (e.g. direct visits to /analyze or /history on production SPA)
-  if (pathname === '/history' || pathname.startsWith('/history/')) {
+  // 4. Check pathname routes (e.g. direct visits to /vulnerability-analysis or /analysis-history on production SPA)
+  if (
+    pathname === '/history' ||
+    pathname.startsWith('/history/') ||
+    pathname === '/analysis-history' ||
+    pathname.startsWith('/analysis-history/')
+  ) {
     return { tab: 'history' };
   }
-  if (pathname === '/analyze' || pathname.startsWith('/analyze/') || pathname.startsWith('/vulnerabilities')) {
+  if (
+    pathname === '/analyze' ||
+    pathname.startsWith('/analyze/') ||
+    pathname.startsWith('/vulnerabilities') ||
+    pathname === '/vulnerability-analysis' ||
+    pathname.startsWith('/vulnerability-analysis/')
+  ) {
     return { tab: 'analyze' };
   }
 
@@ -89,6 +110,9 @@ export function App() {
       if (route.cve) {
         setSelectedCve(route.cve);
       }
+      if (route.tab === 'analyze') {
+        setDataMode('ready');
+      }
     };
 
     window.addEventListener('hashchange', handleRouteSync);
@@ -101,6 +125,9 @@ export function App() {
 
   const handleSelectTab = (tab: 'home' | 'analyze' | 'history') => {
     setCurrentTab(tab);
+    if (tab === 'analyze') {
+      setDataMode('ready');
+    }
     if (tab === 'history') {
       window.location.hash = '#history';
     } else if (tab === 'analyze') {
@@ -112,6 +139,7 @@ export function App() {
 
   const handleSelectCve = (cve: string) => {
     setSelectedCve(cve);
+    setDataMode('ready');
     handleSelectTab('analyze');
   };
 
