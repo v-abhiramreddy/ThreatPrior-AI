@@ -1,7 +1,8 @@
 import asyncio
 import json
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
+import logging
+from unittest.mock import MagicMock, patch
 import pytest
 import botocore.exceptions
 
@@ -994,3 +995,62 @@ async def test_stage1_failure_skips_bedrock_and_falls_back_to_baseline():
     assert decision.decider_status == ModelInvocationStatus.UNAVAILABLE
     assert "Constrained host memory" in decision.fallback_reason
     assert mock_bedrock.converse.called is False
+
+
+def test_bedrock_client_diagnostic_logging_env_match(caplog, monkeypatch):
+    """Test that _get_bedrock_client safely logs region and credential diagnostics without leaking secrets."""
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+    monkeypatch.delenv("AWS_SESSION_TOKEN", raising=False)
+
+    engine = DecisionEngine(region_name="us-east-1")
+    with caplog.at_level(logging.INFO):
+        with patch("boto3.client") as mock_client:
+            mock_client.return_value = MagicMock()
+            client = engine._get_bedrock_client()
+
+    assert "Initializing Bedrock client: region='us-east-1'" in caplog.text
+    assert "credential_source='env'" in caplog.text
+    assert "access_key_matches_env=True" in caplog.text
+    assert "session_token_present=False" in caplog.text
+    # Ensure sensitive credentials are strictly NOT logged
+    assert "AKIAIOSFODNN7EXAMPLE" not in caplog.text
+    assert "wJalrXUtnFEMI" not in caplog.text
+
+
+def test_bedrock_client_diagnostic_logging_with_session_token(caplog, monkeypatch):
+    """Test that session token presence is logged as boolean only without leaking tokens."""
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "ASIAIOSFODNN7EXAMPLE")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+    monkeypatch.setenv("AWS_SESSION_TOKEN", "AQoDYXdzEJr1EXAMPLE")
+
+    engine = DecisionEngine(region_name="ap-southeast-2")
+    with caplog.at_level(logging.INFO):
+        with patch("boto3.client") as mock_client:
+            mock_client.return_value = MagicMock()
+            client = engine._get_bedrock_client()
+
+    assert "Initializing Bedrock client: region='ap-southeast-2'" in caplog.text
+    assert "credential_source='env'" in caplog.text
+    assert "access_key_matches_env=True" in caplog.text
+    assert "session_token_present=True" in caplog.text
+    # Ensure sensitive tokens are strictly NOT logged
+    assert "ASIAIOSFODNN7EXAMPLE" not in caplog.text
+    assert "AQoDYXdzEJr1EXAMPLE" not in caplog.text
+
+
+def test_bedrock_client_diagnostic_logging_mismatched_env(caplog, monkeypatch):
+    """Test diagnostic logging when AWS_ACCESS_KEY_ID is missing from environment."""
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("AWS_SESSION_TOKEN", raising=False)
+
+    engine = DecisionEngine(region_name="us-east-1")
+    with caplog.at_level(logging.INFO):
+        with patch("boto3.client") as mock_client:
+            mock_client.return_value = MagicMock()
+            client = engine._get_bedrock_client()
+
+    assert "Initializing Bedrock client: region='us-east-1'" in caplog.text
+    assert "access_key_matches_env=False" in caplog.text
+

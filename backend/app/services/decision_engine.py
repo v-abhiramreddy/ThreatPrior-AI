@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -297,6 +298,29 @@ class DecisionEngine:
             return self._injected_client
         if self._cached_bedrock_client is not None:
             return self._cached_bedrock_client
+
+        # Safe diagnostic inspection of AWS credentials and region before client creation
+        try:
+            session = boto3.Session(region_name=self.region_name)
+            creds = session.get_credentials()
+            cred_source = creds.method if creds is not None else "none"
+            env_ak = os.environ.get("AWS_ACCESS_KEY_ID")
+            resolved_ak = creds.access_key if creds is not None else None
+            ak_matches_env = bool(resolved_ak and env_ak and resolved_ak == env_ak) if env_ak is not None else False
+            has_session_token = bool(creds and creds.token)
+        except Exception as e:
+            cred_source = f"error: {type(e).__name__}"
+            ak_matches_env = False
+            has_session_token = False
+
+        logger.info(
+            "Initializing Bedrock client: region='%s', credential_source='%s', access_key_matches_env=%s, session_token_present=%s",
+            self.region_name,
+            cred_source,
+            ak_matches_env,
+            has_session_token,
+        )
+
         boto_config = botocore.config.Config(
             retries={"max_attempts": 0},
             connect_timeout=10,
