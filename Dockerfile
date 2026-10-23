@@ -39,10 +39,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install backend Python dependencies
-# Pre-install official PyTorch CPU wheel to prevent downloading ~3 GB of unused CUDA/NVIDIA libraries
+# Step 1: Pre-install official PyTorch CPU wheel in a dedicated layer (~180 MB)
+# This prevents downloading ~3 GB of unused CUDA/NVIDIA libraries and isolates heavy ML binaries
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch>=2.7"
+
+# Step 2: Install remaining backend dependencies in a separate layer (~70 MB)
+# Because torch is already satisfied, this layer avoids gateway buffer/timeout limits on monolithic uploads
 COPY backend/requirements.txt ./backend/
-RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch>=2.7" && \
-    pip install --no-cache-dir -r backend/requirements.txt
+RUN pip install --no-cache-dir -r backend/requirements.txt
 
 # Copy built frontend from Stage 1 into /app/dist
 COPY --from=frontend-builder /app/dist ./dist
