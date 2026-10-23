@@ -185,67 +185,82 @@ export async function fetchTriageDecision(
 }
 
 /**
- * Generates a concise, plain-English operational summary (1–2 sentences)
+ * Generates a genuinely plain-English operational summary (1–2 sentences)
  * from authoritative vulnerability data.
- * Explains what the vulnerability allows an attacker or application to do and its relevant impact.
+ * Explains what the vulnerability allows an attacker or application to do and its relevant practical risk.
  * Preserves the complete original description for the Technical Description section.
+ * If a reliable plain-English summary cannot be generated, returns a clearly labelled fallback.
  */
 export function generateOperationalSummary(
   sourceDescription?: string | null,
-  _title?: string | null,
-  cveId?: string | null
+  title?: string | null,
+  _cveId?: string | null
 ): string {
+  const fallbackText =
+    'Operational Summary Fallback: Standardized plain-English overview unavailable from source telemetry. Refer to authoritative Technical Description below.';
+
   if (!sourceDescription || !sourceDescription.trim()) {
-    return `Operational summary: Threat intelligence telemetry indexed for ${cveId || 'this vulnerability'}. Detailed specifications pending upstream publication.`;
+    return fallbackText;
   }
 
   const desc = sourceDescription.trim();
+  const lower = desc.toLowerCase();
 
-  // Strip verbose trailing OS/version matrices (e.g., "macOS Ventura 13.5, iOS 16.6 and iPadOS 16.6...")
-  let cleaned = desc.replace(/\s+(?:macOS|iOS|iPadOS|watchOS|tvOS)\s+[\d.,\s]+$/i, '');
-  cleaned = cleaned.replace(/\s+Fixed in (?:versions?|builds?).*$/i, '');
-
-  // Split into sentences
-  const sentences = cleaned
-    .split(/(?<=[.!?])\s+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-
-  if (sentences.length === 0) {
-    return `Summary excerpt: ${desc.slice(0, 180)}...`;
+  // Reject placeholders or empty candidate records
+  if (['rejected reason', 'do not use this candidate', 'reserved by', '** reject **'].some((p) => lower.includes(p))) {
+    return fallbackText;
   }
 
-  const selected: string[] = [];
-  for (const s of sentences.slice(0, 3)) {
-    // Skip sentences that are purely changelog disclaimers or version listings
-    if (/^(?:Note that|From version|In version|Fixed in|See vendor|This issue was addressed)/i.test(s)) {
-      continue;
+  // 1. Determine attacker position / access vector
+  let actor = 'An attacker';
+  if (['remote', 'network', 'unauthenticated', 'remotely'].some((w) => lower.includes(w))) {
+    actor = 'An unauthenticated remote attacker';
+  } else if (['local', 'locally', 'local user', 'local application'].some((w) => lower.includes(w))) {
+    actor = 'A local application or user';
+  } else if (['adjacent', 'physical'].some((w) => lower.includes(w))) {
+    actor = 'An attacker with adjacent network access';
+  }
+
+  // 2. Extract grounded vulnerability mechanism and practical risk
+  let impact: string | null = null;
+  let risk: string | null = null;
+
+  if (['remote code execution', 'execute arbitrary code', 'arbitrary code execution', 'rce', 'code execution'].some((w) => lower.includes(w))) {
+    impact = 'exploit arbitrary code execution vulnerabilities';
+    risk = 'complete host takeover, internal network traversal, and unauthorized service manipulation';
+  } else if (['privilege escalation', 'elevation of privilege', 'gain privileges', 'modify sensitive kernel'].some((w) => lower.includes(w))) {
+    impact = 'bypass operating system protections to elevate privileges';
+    risk = 'unauthorized administrative control and disabling of core security mechanisms';
+  } else if (['memory corruption', 'buffer overflow', 'heap-based buffer', 'out-of-bounds', 'use-after-free'].some((w) => lower.includes(w))) {
+    impact = 'corrupt memory boundaries to alter application execution';
+    risk = 'unexpected process crashes or unauthorized code execution within system processes';
+  } else if (['sql injection', 'command injection', 'injection vulnerability'].some((w) => lower.includes(w))) {
+    impact = 'inject malicious commands into application processing routines';
+    risk = 'unauthorized database exfiltration and arbitrary command execution';
+  } else if (['credential', 'ntlm', 'information disclosure', 'sensitive information', 'information leak'].some((w) => lower.includes(w))) {
+    impact = 'intercept or exfiltrate sensitive data and authentication credentials';
+    risk = 'credential harvesting, lateral movement, and confidential record exposure';
+  } else if (['bypass', 'protected view', 'sandbox', 'access control'].some((w) => lower.includes(w))) {
+    impact = 'bypass security boundaries and isolation controls';
+    risk = 'defense-in-depth compromise and unauthorized access to restricted assets';
+  } else if (['denial of service', 'crash', 'resource exhaustion'].some((w) => lower.includes(w))) {
+    impact = 'trigger unexpected service termination or resource starvation';
+    risk = 'severe application outages and prolonged operational downtime';
+  }
+
+  if (!impact) {
+    return fallbackText;
+  }
+
+  let targetClause = '';
+  if (title && !title.toUpperCase().startsWith('CVE-')) {
+    const cleanTitle = title.replace(/^(?:Vulnerability\s+)?(?:CVE-\d{4}-\d+\s*[-:]?\s*)?/i, '').trim();
+    if (cleanTitle) {
+      targetClause = ` in ${cleanTitle}`;
     }
-    if (/^(?:macOS|iOS|iPadOS|Windows|Ubuntu|Debian)\s+\d/i.test(s)) {
-      continue;
-    }
-    selected.push(s);
-    if (selected.length === 2) break;
   }
 
-  if (selected.length === 0) {
-    selected.push(sentences[0]);
-  }
-
-  let summary = selected.join(' ').trim();
-
-  // If excessively long, condense to primary impact sentence
-  if (summary.length > 280 && selected.length > 1) {
-    summary = selected[0].trim();
-  }
-
-  // Safe fallback if still unusually long
-  if (summary.length > 320) {
-    const cut = summary.slice(0, 220).replace(/\s+\S*$/, '');
-    return `Summary excerpt: ${cut}...`;
-  }
-
-  return summary;
+  return `${actor} can ${impact}${targetClause}. In an enterprise environment, this introduces practical risk of ${risk}.`;
 }
 
 /**

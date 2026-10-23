@@ -14,7 +14,7 @@ test.describe('ThreatPrior AI UI Refinements & Functional Integrity', () => {
           normalized: {
             title: 'Log4Shell Apache Log4j2 JNDI Remote Code Execution',
             summary:
-              'Apache Log4j2 contains a critical remote code execution vulnerability in its JNDI lookup functionality.',
+              'An unauthenticated attacker can execute arbitrary code remotely by sending malicious lookup strings into application logs. If exploited, attackers can gain full control of the host server, traverse internal networks, and deploy automated ransomware payloads.',
             description:
               'Apache Log4j2 versions 2.0-beta9 through 2.15.0 (excluding security releases 2.12.2, 2.12.3, and 2.3.1) JNDI features used in configuration, log messages, and parameters do not protect against attacker-controlled LDAP and other JNDI related endpoints. An attacker who can control log messages or log message parameters can execute arbitrary code loaded from LDAP servers when message lookup substitution is enabled.',
             primary_severity: 'CRITICAL',
@@ -156,7 +156,7 @@ test.describe('ThreatPrior AI UI Refinements & Functional Integrity', () => {
     // Operational summary card
     const opSummary = page.locator('#cve-operational-summary');
     await expect(opSummary).toBeVisible();
-    await expect(opSummary).toContainText('Apache Log4j2');
+    await expect(opSummary).toContainText('An unauthenticated attacker can execute arbitrary code remotely');
 
     // Toggle Technical Description
     const toggleBtn = page.locator('#btn-toggle-tech-desc');
@@ -327,7 +327,7 @@ test.describe('ThreatPrior AI UI Refinements & Functional Integrity', () => {
           normalized: {
             title: 'Operation Triangulation Kernel Zero-Day',
             summary:
-              'A local application may be able to modify sensitive kernel state and bypass hardware page protections on vulnerable Apple devices. Observed in active in-the-wild targeted zero-day exploit chains.',
+              'A malicious local app can manipulate hardware memory-mapped registers to bypass core operating system protections. This grants an attacker unrestricted kernel read/write access, enabling stealthy installation of surveillance spyware on compromised devices.',
             description:
               'An app may be able to modify sensitive kernel state. Apple is aware of a report that this issue may have been actively exploited against versions of iOS released before iOS 15.7. macOS Ventura 13.5, iOS 16.6 and iPadOS 16.6, watchOS 9.6, tvOS 16.6, iOS 15.7.8 and iPadOS 15.7.8, macOS Monterey 12.6.8, macOS Big Sur 11.7.9.',
             primary_severity: 'HIGH',
@@ -365,7 +365,7 @@ test.describe('ThreatPrior AI UI Refinements & Functional Integrity', () => {
           normalized: {
             title: 'MonikerLink Outlook Remote Code Execution',
             summary:
-              'A link handling vulnerability in Microsoft Outlook allows an attacker to bypass Office Protected View and trigger remote code execution or NTLM credential leakage via a specially crafted hyperlink.',
+              'Specially crafted email links bypass Office security boundaries to trigger background network authentication against an external server. This silently exposes corporate Windows login credentials and enables unauthorized code execution, even when a user merely previews an email.',
             description:
               'Microsoft Outlook Remote Code Execution Vulnerability (MonikerLink). An attacker who successfully exploited this vulnerability could bypass Office Protected View and execute arbitrary code. Exploitation requires sending an email containing a specially crafted link that bypasses Protected View protocol checks when clicked or previewed.',
             primary_severity: 'CRITICAL',
@@ -398,19 +398,19 @@ test.describe('ThreatPrior AI UI Refinements & Functional Integrity', () => {
       {
         cve: 'CVE-2021-44228',
         selector: '[data-cve="CVE-2021-44228"]',
-        expectedSummarySnippet: 'Apache Log4j2 contains a critical remote code execution vulnerability in its JNDI lookup functionality',
+        expectedSummarySnippet: 'An unauthenticated attacker can execute arbitrary code remotely',
         expectedTechDescSnippet: 'versions 2.0-beta9 through 2.15.0',
       },
       {
         cve: 'CVE-2023-38606',
         selector: '[data-cve="CVE-2023-38606"]',
-        expectedSummarySnippet: 'A local application may be able to modify sensitive kernel state and bypass hardware page protections',
+        expectedSummarySnippet: 'A malicious local app can manipulate hardware memory-mapped registers',
         expectedTechDescSnippet: 'Apple is aware of a report that this issue may have been actively exploited',
       },
       {
         cve: 'CVE-2024-21413',
         selector: '[data-cve="CVE-2024-21413"]',
-        expectedSummarySnippet: 'A link handling vulnerability in Microsoft Outlook allows an attacker to bypass Office Protected View',
+        expectedSummarySnippet: 'Specially crafted email links bypass Office security boundaries',
         expectedTechDescSnippet: 'Microsoft Outlook Remote Code Execution Vulnerability (MonikerLink)',
       },
     ];
@@ -458,7 +458,8 @@ test.describe('ThreatPrior AI UI Refinements & Functional Integrity', () => {
           normalized: {
             title: 'Log4Shell Apache Log4j2 JNDI Remote Code Execution',
             description: 'Apache Log4j2 JNDI features do not protect against attacker-controlled LDAP endpoints.',
-            summary: 'Apache Log4j2 contains a critical remote code execution vulnerability in its JNDI lookup functionality.',
+            summary:
+              'An unauthenticated attacker can execute arbitrary code remotely by sending malicious lookup strings into application logs. If exploited, attackers can gain full control of the host server, traverse internal networks, and deploy automated ransomware payloads.',
             primary_severity: 'CRITICAL',
             cvss_score: 10.0,
             cvss_version: '3.1',
@@ -669,5 +670,100 @@ test.describe('ThreatPrior AI UI Refinements & Functional Integrity', () => {
     // Confirm AI-assigned priority remains authoritative and unchanged by policy check
     const aiPriority = page.locator('#ai-priority-chip');
     await expect(aiPriority).toContainText('Priority 1'); // Strands Decider Priority 1 in demo fixture
+  });
+
+  test('Refinement 2: Remediation Verification collapsible section isolates unverified patch targets and displays mandatory vendor warning', async ({ page }) => {
+    await page.goto('/#analyze');
+    await page.locator('#btn-pill-demo-fixture').click();
+    await expect(page.locator('#state-loaded')).toBeVisible();
+
+    const panel = page.locator('#confidence-limitations-panel');
+    await expect(panel).toBeVisible();
+
+    // Verify uncalibrated confidence explanation and prominent percentage
+    await expect(panel).toContainText('94.0% Confidence');
+    await expect(page.locator('#confidence-explanation-text')).toContainText('uncalibrated');
+
+    // Remediation Verification collapsible section exists
+    const remSection = page.locator('#remediation-verification-section');
+    await expect(remSection).toBeVisible();
+    await expect(remSection).toContainText('Remediation Verification');
+
+    // Check mandatory vendor advisory warning
+    const warning = page.locator('#remediation-verification-warning');
+    await expect(warning).toBeVisible();
+    await expect(warning).toContainText('AI-generated remediation recommendations require verification against official vendor advisories');
+
+    // Verify unverified version suggestion is inside this collapsible section
+    const remList = page.locator('#remediation-verification-list');
+    await expect(remList).toBeVisible();
+    await expect(remList).toContainText('Extrapolated target patch version "2.17.1"');
+
+    // Toggle collapse
+    const toggleBtn = page.locator('#btn-toggle-remediation-verification');
+    await toggleBtn.click();
+    await expect(page.locator('#remediation-verification-panel')).not.toBeVisible();
+
+    // Reopen
+    await toggleBtn.click();
+    await expect(page.locator('#remediation-verification-panel')).toBeVisible();
+  });
+
+  test('Refinement 1 & 3: Operational summary fallback and risk policy validation status badge layout', async ({ page }) => {
+    // Mock response with sparse description that triggers the operational summary fallback
+    await page.route('**/api/vulnerabilities/CVE-2099-0001/**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          cve_id: 'CVE-2099-0001',
+          status: 'OK',
+          retrieved_at: '2026-10-23T10:00:00Z',
+          normalized: {
+            title: 'CVE-2099-0001 Sparse Record',
+            summary: 'Operational Summary Fallback: Standardized plain-English overview unavailable from source telemetry. Refer to authoritative Technical Description below.',
+            description: 'Unspecified generic component issue.',
+            primary_severity: 'MEDIUM',
+            cvss_score: 5.0,
+            cvss_version: '3.1',
+            is_cisa_kev: false,
+            affected_cpe_count: 1,
+          },
+          provenance: {
+            nvd: { source: 'NIST NVD API v2.0', status: 'AVAILABLE' },
+            cisa_kev: { source: 'CISA KEV Catalog', status: 'NOT_LISTED', is_listed: false, notes: 'Not listed.' },
+            epss: { source: 'FIRST.org EPSS v3', status: 'AVAILABLE', probability: 0.02, percentile: 0.1 },
+          },
+          decision: {
+            priority: 'Medium',
+            rationale: 'Moderate impact.',
+            recommended_action: 'Review telemetry',
+            confidence: 0.8,
+            engine: 'dual-ai',
+            decided_at: '2026-10-23T10:00:00Z',
+          },
+          errors: [],
+        }),
+      });
+    });
+
+    await page.goto('/#analyze');
+    await page.locator('#cve-input').fill('CVE-2099-0001');
+    await page.locator('#btn-analyze').click();
+    await expect(page.locator('#state-loaded')).toBeVisible();
+
+    // Verify labelled fallback text is displayed
+    const opSummary = page.locator('#cve-operational-summary');
+    await expect(opSummary).toBeVisible();
+    await expect(opSummary).toContainText('Operational Summary Fallback: Standardized plain-English overview unavailable from source telemetry');
+
+    // Load offline demo fixture to check policy validation heading and status badge layout
+    await page.locator('#btn-pill-demo-fixture').click();
+    await expect(page.locator('#state-loaded')).toBeVisible();
+
+    const statusBadge = page.locator('#risk-policy-status-badge');
+    await expect(statusBadge).toBeVisible();
+    await expect(statusBadge).toHaveClass(/whitespace-nowrap/);
+    await expect(statusBadge).toContainText('Status: disagreement');
   });
 });

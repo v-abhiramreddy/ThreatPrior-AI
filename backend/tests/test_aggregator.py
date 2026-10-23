@@ -58,6 +58,15 @@ def test_generate_operational_summary_distinct():
     assert len(summary) > 0
     assert summary != long_nvd_desc
     assert len(summary) < len(long_nvd_desc)
+    # Does not copy the opening sentence
+    assert not summary.startswith("Apache Log4j2 versions 2.0-beta9")
+    assert "arbitrary code" in summary
+    assert "practical risk" in summary
+
+    # Fallback behavior when reliable summary cannot be synthesized
+    fallback = generate_operational_summary("Generic issue without standard impact", "Sparse CVE", "CVE-2099-0001")
+    assert "Operational Summary Fallback:" in fallback
+    assert "authoritative Technical Description below" in fallback
 
 
 @pytest.mark.asyncio

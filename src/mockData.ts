@@ -45,7 +45,7 @@ export const DEMO_CVE_PRESETS: Record<string, CveData> = {
       model_priority: 'High',
       evidence_priority: 'Critical',
       validation_explanation:
-        'Policy Disagreement: Model assigned High priority, while deterministic evidence policy evaluates to Critical. Primary policy trigger: Confirmed CISA KEV active exploitation combined with critical impact. Deterministic policy findings represent organizational rules, not an alternate AI model.',
+        'Policy Disagreement: Model assigned High priority, while deterministic evidence policy evaluates to Critical. Primary policy trigger: Confirmed CISA KEV active exploitation combined with critical impact (CVSS >= 8.5 or high EPSS). Deterministic policy findings represent organizational rules, not an alternate AI model.',
       risk_factors: [
         'NVD CVSS Base Score: 10.0 (CRITICAL) [Published: 2021-12-10T10:15:08.767].',
         'CISA KEV: Listed as confirmed active threat (Added: 2021-12-10) [Catalog Version: 2026.10.15].',
@@ -89,7 +89,7 @@ export const DEMO_CVE_PRESETS: Record<string, CveData> = {
     rationale:
       'Log4j2 JNDI remote code execution enables unauthenticated attackers to execute arbitrary code with maximum structural impact. Driven by confirmed CISA KEV active exploitation in the wild and a 97.4% EPSS probability, this vulnerability demands instant mitigation across both internet-facing and internal VPC application tiers.',
     summary:
-      'Apache Log4j2 contains a critical remote code execution vulnerability in its JNDI lookup functionality. Attackers can execute arbitrary code with application privileges by submitting malicious LDAP or JNDI lookup strings into logged inputs, enabling unauthenticated system compromise.',
+      'An unauthenticated attacker can execute arbitrary code remotely by sending malicious lookup strings into application logs. If exploited, attackers can gain full control of the host server, traverse internal networks, and deploy automated ransomware payloads.',
     technicalDescription:
       'Apache Log4j2 versions 2.0-beta9 through 2.15.0 (excluding security releases 2.12.2, 2.12.3, and 2.3.1) JNDI features used in configuration, log messages, and parameters do not protect against attacker-controlled LDAP and other JNDI related endpoints. An attacker who can control log messages or log message parameters can execute arbitrary code loaded from LDAP servers when message lookup substitution is enabled. From log4j 2.15.0, this behavior has been disabled by default. In version 2.16.0 (and 2.12.2, 2.12.3, 2.3.1), this functionality has been completely removed. Note that this vulnerability is specific to log4j-core and does not affect log4net, log4cxx, or other Apache Logging Services projects.',
     remediationSteps: [
@@ -167,7 +167,7 @@ export const DEMO_CVE_PRESETS: Record<string, CveData> = {
     priorityColor: 'text-tertiary-container',
     priorityContainerColor: 'bg-tertiary-container/20 border-tertiary-container/30',
     summary:
-      'A local application may be able to modify sensitive kernel state and bypass hardware page protections on vulnerable Apple devices. Observed in active in-the-wild targeted zero-day exploit chains.',
+      'A malicious local app can manipulate hardware memory-mapped registers to bypass core operating system protections. This grants an attacker unrestricted kernel read/write access, enabling stealthy installation of surveillance spyware on compromised devices.',
     technicalDescription:
       'An app may be able to modify sensitive kernel state. Apple is aware of a report that this issue may have been actively exploited against versions of iOS released before iOS 15.7. macOS Ventura 13.5, iOS 16.6 and iPadOS 16.6, watchOS 9.6, tvOS 16.6, iOS 15.7.8 and iPadOS 15.7.8, macOS Monterey 12.6.8, macOS Big Sur 11.7.9.',
     riskValidation: {
@@ -259,7 +259,7 @@ export const DEMO_CVE_PRESETS: Record<string, CveData> = {
     rationale:
       'Bypasses Office Protected View via file: links containing exclamation points. Enables local NTLM hash exfiltration and remote code execution with minimal user interaction upon previewing untrusted emails.',
     summary:
-      'A link handling vulnerability in Microsoft Outlook allows an attacker to bypass Office Protected View and trigger remote code execution or NTLM credential leakage via a specially crafted hyperlink.',
+      'Specially crafted email links bypass Office security boundaries to trigger background network authentication against an external server. This silently exposes corporate Windows login credentials and enables unauthorized code execution, even when a user merely previews an email.',
     technicalDescription:
       'Microsoft Outlook Remote Code Execution Vulnerability (MonikerLink). An attacker who successfully exploited this vulnerability could bypass Office Protected View and execute arbitrary code. Exploitation requires sending an email containing a specially crafted link that bypasses Protected View protocol checks when clicked or previewed.',
     riskValidation: {

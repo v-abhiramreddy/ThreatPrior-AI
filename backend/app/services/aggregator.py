@@ -24,51 +24,75 @@ logger = logging.getLogger(__name__)
 def generate_operational_summary(
     description: Optional[str], title: Optional[str] = None, cve_id: Optional[str] = None
 ) -> str:
-    """Generate a concise, CVE-specific plain-English operational summary (1-2 sentences).
+    """Generate a genuinely plain-English operational summary (1-2 sentences).
 
-    Explains what the vulnerability allows an attacker or application to do and its relevant impact.
-    Grounded strictly in source data without claims not supported by evidence.
+    Explains what the vulnerability allows an attacker or application to do and its relevant practical risk.
+    Does not copy or repeat the opening sentence of the technical description.
+    If a reliable plain-English explanation cannot be generated, returns a clearly labelled fallback.
     """
+    fallback_text = (
+        "Operational Summary Fallback: Standardized plain-English overview unavailable from source telemetry. "
+        "Refer to authoritative Technical Description below."
+    )
     if not description or not description.strip():
-        return f"Operational summary: Threat intelligence telemetry indexed for {cve_id or 'this vulnerability'}."
+        return fallback_text
 
     desc = description.strip()
+    lower = desc.lower()
 
-    # Clean out verbose version lists at the end
-    cleaned = re.sub(r"\s+(?:macOS|iOS|iPadOS|watchOS|tvOS)\s+[\d\.,\s]+$", "", desc, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\s+Fixed in (?:versions?|builds?).*$", "", cleaned, flags=re.IGNORECASE)
+    # Reject placeholders or empty candidate records
+    if any(p in lower for p in ["rejected reason", "do not use this candidate", "reserved by", "** reject **"]):
+        return fallback_text
 
-    # Split into sentences cleanly
-    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", cleaned) if s.strip()]
-    if not sentences:
-        return f"Operational summary: {desc[:180]}..."
+    # 1. Determine attacker position / access vector
+    if any(w in lower for w in ["remote", "network", "unauthenticated", "remotely"]):
+        actor = "An unauthenticated remote attacker"
+    elif any(w in lower for w in ["local", "locally", "local user", "local application"]):
+        actor = "A local application or user"
+    elif any(w in lower for w in ["adjacent", "physical"]):
+        actor = "An attacker with adjacent network access"
+    else:
+        actor = "An attacker"
 
-    selected: list[str] = []
-    for s in sentences[:3]:
-        # Skip sentences that are purely changelog or version matrix notes
-        if re.match(r"^(?:Note that|From version|In version|Fixed in|See vendor|This issue was addressed)", s, re.IGNORECASE):
-            continue
-        if re.search(r"^(?:macOS|iOS|iPadOS|Windows|Ubuntu|Debian)\s+\d", s, re.IGNORECASE):
-            continue
-        selected.append(s)
-        if len(selected) == 2:
-            break
+    # 2. Extract grounded vulnerability mechanism and practical risk
+    impact: Optional[str] = None
+    risk: Optional[str] = None
 
-    if not selected:
-        selected = [sentences[0]]
+    if any(w in lower for w in ["remote code execution", "execute arbitrary code", "arbitrary code execution", "rce", "code execution"]):
+        impact = "exploit arbitrary code execution vulnerabilities"
+        risk = "complete host takeover, internal network traversal, and unauthorized service manipulation"
+    elif any(w in lower for w in ["privilege escalation", "elevation of privilege", "gain privileges", "modify sensitive kernel"]):
+        impact = "bypass operating system protections to elevate privileges"
+        risk = "unauthorized administrative control and disabling of core security mechanisms"
+    elif any(w in lower for w in ["memory corruption", "buffer overflow", "heap-based buffer", "out-of-bounds", "use-after-free"]):
+        impact = "corrupt memory boundaries to alter application execution"
+        risk = "unexpected process crashes or unauthorized code execution within system processes"
+    elif any(w in lower for w in ["sql injection", "command injection", "injection vulnerability"]):
+        impact = "inject malicious commands into application processing routines"
+        risk = "unauthorized database exfiltration and arbitrary command execution"
+    elif any(w in lower for w in ["credential", "ntlm", "information disclosure", "sensitive information", "information leak"]):
+        impact = "intercept or exfiltrate sensitive data and authentication credentials"
+        risk = "credential harvesting, lateral movement, and confidential record exposure"
+    elif any(w in lower for w in ["bypass", "protected view", "sandbox", "access control"]):
+        impact = "bypass security boundaries and isolation controls"
+        risk = "defense-in-depth compromise and unauthorized access to restricted assets"
+    elif any(w in lower for w in ["denial of service", "crash", "resource exhaustion"]):
+        impact = "trigger unexpected service termination or resource starvation"
+        risk = "severe application outages and prolonged operational downtime"
 
-    summary = " ".join(selected).strip()
+    if not impact:
+        return fallback_text
 
-    # If still excessively long, condense to primary impact sentence
-    if len(summary) > 280 and len(selected) > 1:
-        summary = selected[0].strip()
+    target_clause = ""
+    if title and not title.upper().startswith("CVE-"):
+        clean_title = re.sub(r"^(?:Vulnerability\s+)?(?:CVE-\d{4}-\d+\s*[-:]?\s*)?", "", title).strip()
+        if clean_title:
+            target_clause = f" in {clean_title}"
 
-    # Fallback if text is still unusually long
-    if len(summary) > 320:
-        cut = summary[:220].rsplit(" ", 1)[0]
-        return f"Summary excerpt: {cut}..."
-
-    return summary
+    return (
+        f"{actor} can {impact}{target_clause}. "
+        f"In an enterprise environment, this introduces practical risk of {risk}."
+    )
 
 
 class VulnerabilityAggregator:
