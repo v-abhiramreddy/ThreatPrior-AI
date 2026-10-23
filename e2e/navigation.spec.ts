@@ -108,7 +108,7 @@ test.describe('Navigation & Routing (Phase 6.2 Landing Page & Deep Links)', () =
     await page.goto('/#history');
 
     // Click "View Analysis" on the Apple WebKit CVE-2023-38606 row
-    const row = page.locator('#auditTableBody tr', { hasText: 'CVE-2023-38606' });
+    const row = page.locator('#auditTableBody tr', { hasText: 'CVE-2023-38606' }).first();
     await expect(row).toBeVisible();
     await row.getByRole('button', { name: 'View Analysis' }).click();
 

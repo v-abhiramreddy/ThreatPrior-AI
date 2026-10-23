@@ -727,7 +727,8 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
     await expect(page.locator('#remediation-source-badge')).toContainText('Bedrock Synthesis (General Guidance)');
     await expect(page.locator('#remediation-unverified-tag')).toContainText('Unverified AI Synthesis');
 
-    // Verify Fact-checking limitation is rendered
+    // Expand Remediation Validation section to check fact-checking limitation
+    await page.locator('#btn-toggle-remediation-validation').click();
     await expect(page.locator('#confidence-limitations-panel')).toContainText('have not been independently fact-checked against vendor release registries');
   });
 

@@ -8,8 +8,15 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab, dataMode = 'ready' }) => {
+  const getNavTabClass = (isActive: boolean) =>
+    `px-space-md py-1.5 rounded-lg text-body-sm font-medium cursor-pointer border transition-all duration-200 ease-in-out ${
+      isActive
+        ? 'bg-secondary/15 text-primary border-secondary/25 shadow-sm shadow-secondary/10'
+        : 'text-on-surface-variant hover:text-secondary hover:bg-secondary/10 border-transparent hover:border-secondary/20'
+    }`;
+
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-surface-container-lowest/90 backdrop-blur-md border-b border-surface-container-high/50">
+    <header className="fixed top-0 left-0 right-0 z-50 bg-[#071926]/90 backdrop-blur-md border-b border-secondary/25 shadow-[0_1px_12px_rgba(79,219,200,0.06)] transition-colors">
       <div className="h-14 w-full px-margin flex items-center justify-between">
         {/* Left: Brand & Navigation */}
         <div className="flex items-center gap-space-lg">
@@ -41,11 +48,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab, dataMod
               type="button"
               onClick={() => onSelectTab('home')}
               aria-current={currentTab === 'home' ? 'page' : undefined}
-              className={`px-space-md py-1.5 transition-colors font-medium rounded-lg text-body-sm cursor-pointer ${
-                currentTab === 'home'
-                  ? 'bg-surface-container text-primary font-medium shadow-sm'
-                  : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
-              }`}
+              className={getNavTabClass(currentTab === 'home')}
             >
               Home
             </button>
@@ -54,11 +57,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab, dataMod
               type="button"
               onClick={() => onSelectTab('analyze')}
               aria-current={currentTab === 'analyze' ? 'page' : undefined}
-              className={`px-space-md py-1.5 transition-colors font-medium rounded-lg text-body-sm cursor-pointer ${
-                currentTab === 'analyze'
-                  ? 'bg-surface-container text-primary font-medium shadow-sm'
-                  : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
-              }`}
+              className={getNavTabClass(currentTab === 'analyze')}
             >
               <span className="hidden md:inline">Vulnerability </span>Analysis
             </button>
@@ -67,11 +66,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab, dataMod
               type="button"
               onClick={() => onSelectTab('history')}
               aria-current={currentTab === 'history' ? 'page' : undefined}
-              className={`px-space-md py-1.5 transition-colors font-medium rounded-lg text-body-sm cursor-pointer ${
-                currentTab === 'history'
-                  ? 'bg-surface-container text-primary font-medium shadow-sm'
-                  : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
-              }`}
+              className={getNavTabClass(currentTab === 'history')}
             >
               <span className="hidden md:inline">Analysis </span>History
             </button>
@@ -125,22 +120,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab, dataMod
             </span>
           </div>
 
-          <div className="hidden md:flex items-center gap-space-xs px-space-sm py-1 rounded-lg bg-surface-container-low text-on-surface-variant font-code-sm text-code-sm">
-            <span className="material-symbols-outlined text-[14px]">keyboard_command_key</span>
-            <span>K</span>
-          </div>
-
           <div className="h-4 w-px bg-surface-container-highest hidden sm:block" />
-
-          <button
-            id="btn-settings"
-            type="button"
-            className="p-1.5 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors"
-            title="Settings (Demo)"
-            aria-label="Settings"
-          >
-            <span className="material-symbols-outlined text-[18px]">tune</span>
-          </button>
 
           <div
             className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-on-primary font-bold text-xs"

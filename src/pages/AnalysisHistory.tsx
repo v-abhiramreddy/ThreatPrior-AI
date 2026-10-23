@@ -11,7 +11,6 @@ export const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onSelectCve })
   const [searchTerm, setSearchTerm] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('ALL');
   const [kevFilter, setKevFilter] = useState('ALL');
-  const [copiedToken, setCopiedToken] = useState(false);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
 
   // Live Audit Store State
@@ -149,13 +148,6 @@ export const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onSelectCve })
     showNotice('Exported threatprior_audit_history.csv successfully.');
   };
 
-  const handleCopyToken = () => {
-    const token = 'tp_live_99f2b8473c091932';
-    navigator.clipboard?.writeText(token);
-    setCopiedToken(true);
-    showNotice(`Ingest API Token copied: ${token} (Demo Token · Sandbox Simulated Credential)`);
-    setTimeout(() => setCopiedToken(false), 2500);
-  };
 
   return (
     <div className="w-full min-h-screen pb-16">
@@ -493,34 +485,6 @@ export const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onSelectCve })
           </div>
         </div>
 
-        {/* Telemetry Inspector Tray */}
-        <div className="p-space-lg rounded-xl bg-surface-container-low flex flex-col md:flex-row items-center justify-between gap-space-lg border border-surface-container-high">
-          <div className="flex items-center gap-space-md">
-            <div className="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center text-primary border border-primary/20">
-              <span className="material-symbols-outlined text-[20px]">terminal</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="font-headline-sm text-headline-sm text-on-surface font-medium">
-                Need Raw Audit Log Ingestion?
-              </span>
-              <span className="font-body-sm text-body-sm text-on-surface-variant">
-                ThreatPrior supports direct streaming ingestion via Splunk, Elastic, and AWS Security Lake.
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-space-sm w-full md:w-auto">
-            <button
-              id="copyTokenBtn"
-              type="button"
-              onClick={handleCopyToken}
-              className="w-full md:w-auto px-space-md py-2 rounded-lg bg-surface-container-high text-on-surface hover:bg-surface-container-highest transition-colors font-code-sm text-code-sm flex items-center justify-center gap-space-xs cursor-pointer border border-surface-container-highest active:scale-95"
-            >
-              <span className="material-symbols-outlined text-[16px] text-primary">key</span>
-              <span>{copiedToken ? 'Token Copied!' : 'Copy Ingest API Token'}</span>
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );

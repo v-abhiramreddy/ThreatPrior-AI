@@ -82,10 +82,9 @@ test.describe('Analysis History & Triage Queue Page', () => {
     expect(download.suggestedFilename()).toBe('threatprior_audit_history.csv');
   });
 
-  test('should copy API Ingest token to clipboard', async ({ page }) => {
-    const copyBtn = page.locator('#copyTokenBtn');
-    await copyBtn.click();
-    await expect(copyBtn).toContainText('Token Copied!');
-    await expect(page.locator('[role="status"]')).toContainText('Ingest API Token copied: tp_live_99f2b8473c091932');
+  test('should not display simulated raw audit log ingest card or token button', async ({ page }) => {
+    await expect(page.locator('#copyTokenBtn')).not.toBeVisible();
+    await expect(page.getByText('Need Raw Audit Log Ingestion?')).not.toBeVisible();
+    await expect(page.getByText('Splunk, Elastic, and AWS Security Lake')).not.toBeVisible();
   });
 });

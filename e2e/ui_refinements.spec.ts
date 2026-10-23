@@ -146,31 +146,28 @@ test.describe('ThreatPrior AI UI Refinements & Functional Integrity', () => {
     await expect(page.locator('#state-loaded')).not.toBeVisible();
   });
 
-  test('CVE overview displays Operational Summary and expandable Full Technical Description', async ({ page }) => {
+  test('CVE overview displays Operational Summary and original description at top without duplicate Technical Description section', async ({ page }) => {
     await page.goto('/#analyze');
 
     // Load offline demo fixture
     await page.locator('#btn-pill-demo-fixture').click();
     await expect(page.locator('#state-loaded')).toBeVisible();
 
+    // Original description displayed at top below CVE ID
+    const topDesc = page.locator('#target-cve-desc');
+    await expect(topDesc).toBeVisible();
+    await expect(topDesc).toContainText('Log4j2 JNDI Remote Code Execution');
+
     // Operational summary card
     const opSummary = page.locator('#cve-operational-summary');
     await expect(opSummary).toBeVisible();
     await expect(opSummary).toContainText('An unauthenticated attacker can execute arbitrary code remotely');
 
-    // Toggle Technical Description
+    // Redundant Technical Description accordion is removed
     const toggleBtn = page.locator('#btn-toggle-tech-desc');
-    await expect(toggleBtn).toBeVisible();
-    await expect(toggleBtn).toContainText('Technical Description');
+    await expect(toggleBtn).not.toBeVisible();
 
     const techDescContent = page.locator('#technical-description-panel');
-    await expect(techDescContent).not.toBeVisible();
-
-    await toggleBtn.click();
-    await expect(techDescContent).toBeVisible();
-    await expect(techDescContent).toContainText('Apache Log4j2 versions 2.0-beta9 through 2.15.0');
-
-    await toggleBtn.click();
     await expect(techDescContent).not.toBeVisible();
   });
 
@@ -426,22 +423,15 @@ test.describe('ThreatPrior AI UI Refinements & Functional Integrity', () => {
       const opSummaryText = (await opSummaryEl.textContent()) || '';
       expect(opSummaryText).toContain(item.expectedSummarySnippet);
 
-      // Expand technical description
+      // Verify that original description is visible at the top
+      const topDescEl = page.locator('#target-cve-desc');
+      await expect(topDescEl).toBeVisible();
+
+      // Redundant technical description accordion is removed from UI
       const toggleBtn = page.locator('#btn-toggle-tech-desc');
+      await expect(toggleBtn).not.toBeVisible();
       const techPanel = page.locator('#technical-description-panel');
-      const isExpanded = await techPanel.isVisible();
-      if (!isExpanded) {
-        await toggleBtn.click();
-      }
-      await expect(techPanel).toBeVisible();
-      const techDescText = (await techPanel.textContent()) || '';
-      expect(techDescText).toContain(item.expectedTechDescSnippet);
-
-      // Verify that summary and technical description are meaningfully distinct
-      expect(opSummaryText.trim()).not.toEqual(techDescText.trim());
-
-      // Historical version disclaimer is preserved
-      await expect(techPanel).toContainText('Historical version text does not replace current vendor patch guidance');
+      await expect(techPanel).not.toBeVisible();
     }
   });
 
@@ -672,7 +662,7 @@ test.describe('ThreatPrior AI UI Refinements & Functional Integrity', () => {
     await expect(aiPriority).toContainText('Priority 1'); // Strands Decider Priority 1 in demo fixture
   });
 
-  test('Refinement 2: Remediation Verification collapsible section isolates unverified patch targets and displays mandatory vendor warning', async ({ page }) => {
+  test('Refinement 2: Consolidated Remediation Validation section displays dynamic status, is collapsed by default, and isolates unverified patch targets', async ({ page }) => {
     await page.goto('/#analyze');
     await page.locator('#btn-pill-demo-fixture').click();
     await expect(page.locator('#state-loaded')).toBeVisible();
@@ -684,29 +674,39 @@ test.describe('ThreatPrior AI UI Refinements & Functional Integrity', () => {
     await expect(panel).toContainText('94.0% Confidence');
     await expect(page.locator('#confidence-explanation-text')).toContainText('uncalibrated');
 
-    // Remediation Verification collapsible section exists
-    const remSection = page.locator('#remediation-verification-section');
+    // Consolidated Remediation Validation section exists
+    const remSection = page.locator('#remediation-validation-section');
     await expect(remSection).toBeVisible();
-    await expect(remSection).toContainText('Remediation Verification');
+    await expect(remSection).toContainText('Remediation Validation');
 
-    // Check mandatory vendor advisory warning
-    const warning = page.locator('#remediation-verification-warning');
+    // Check dynamic concise status indicator (not hardcoded)
+    const statusBadge = page.locator('#remediation-validation-status-badge');
+    await expect(statusBadge).toBeVisible();
+    await expect(statusBadge).toContainText('require verification');
+
+    // Verified collapsed by default
+    const remPanel = page.locator('#remediation-validation-panel');
+    await expect(remPanel).not.toBeVisible();
+
+    // Expand accordion
+    const toggleBtn = page.locator('#btn-toggle-remediation-validation');
+    await toggleBtn.click();
+    await expect(remPanel).toBeVisible();
+
+    // Check consolidated vendor advisory & target version warning
+    const warning = page.locator('#remediation-validation-warning');
     await expect(warning).toBeVisible();
     await expect(warning).toContainText('AI-generated remediation recommendations require verification against official vendor advisories');
+    await expect(warning).toContainText('Operators must validate patch targets against vendor release notes');
 
-    // Verify unverified version suggestion is inside this collapsible section
-    const remList = page.locator('#remediation-verification-list');
+    // Verify unverified version suggestion is inside this consolidated section
+    const remList = page.locator('#remediation-validation-list');
     await expect(remList).toBeVisible();
     await expect(remList).toContainText('Extrapolated target patch version "2.17.1"');
 
-    // Toggle collapse
-    const toggleBtn = page.locator('#btn-toggle-remediation-verification');
+    // Toggle collapse again
     await toggleBtn.click();
-    await expect(page.locator('#remediation-verification-panel')).not.toBeVisible();
-
-    // Reopen
-    await toggleBtn.click();
-    await expect(page.locator('#remediation-verification-panel')).toBeVisible();
+    await expect(remPanel).not.toBeVisible();
   });
 
   test('Refinement 1 & 3: Operational summary fallback and risk policy validation status badge layout', async ({ page }) => {
