@@ -125,6 +125,8 @@ async def test_cisa_client_stale_cache_and_refresh_failure():
         listed_result = await client.get_cve_kev_data("CVE-2021-44228")
         assert listed_result.status == SourceStatus.LISTED
         assert listed_result.is_listed is True
+        assert listed_result.is_cached is True
+        assert listed_result.catalog_version == "2021.12.10"
         assert listed_result.error_message is not None
         assert "upstream refresh failed" in listed_result.error_message.lower()
         assert "upstream refresh failed" in listed_result.notes.lower()
@@ -144,6 +146,7 @@ async def test_cisa_client_successful_refresh():
 
         assert result.status == SourceStatus.LISTED
         assert result.is_listed is True
+        assert result.is_cached is False
         assert result.error_message is None
         assert client._last_refresh_error is None
         assert client._last_refresh_status is None

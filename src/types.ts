@@ -125,6 +125,9 @@ export interface BackendCisaKevProvenance {
   retrieved_at?: string;
   status: SourceStatus;
   catalog_version?: string;
+  catalog_date_released?: string;
+  last_refreshed_at?: string;
+  is_cached?: boolean;
   is_listed: boolean;
   date_added?: string;
   vendor_project?: string;
@@ -158,6 +161,7 @@ export interface BackendProvenance {
 export interface BackendNormalizedVulnerability {
   title: string;
   description: string;
+  summary?: string;
   primary_severity: SeverityLevel;
   cvss_score?: number | null;
   cvss_version?: string | null;

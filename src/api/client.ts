@@ -185,6 +185,70 @@ export async function fetchTriageDecision(
 }
 
 /**
+ * Generates a concise, plain-English operational summary (1–2 sentences)
+ * from authoritative vulnerability data.
+ * Explains what the vulnerability allows an attacker or application to do and its relevant impact.
+ * Preserves the complete original description for the Technical Description section.
+ */
+export function generateOperationalSummary(
+  sourceDescription?: string | null,
+  _title?: string | null,
+  cveId?: string | null
+): string {
+  if (!sourceDescription || !sourceDescription.trim()) {
+    return `Operational summary: Threat intelligence telemetry indexed for ${cveId || 'this vulnerability'}. Detailed specifications pending upstream publication.`;
+  }
+
+  const desc = sourceDescription.trim();
+
+  // Strip verbose trailing OS/version matrices (e.g., "macOS Ventura 13.5, iOS 16.6 and iPadOS 16.6...")
+  let cleaned = desc.replace(/\s+(?:macOS|iOS|iPadOS|watchOS|tvOS)\s+[\d.,\s]+$/i, '');
+  cleaned = cleaned.replace(/\s+Fixed in (?:versions?|builds?).*$/i, '');
+
+  // Split into sentences
+  const sentences = cleaned
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+  if (sentences.length === 0) {
+    return `Summary excerpt: ${desc.slice(0, 180)}...`;
+  }
+
+  const selected: string[] = [];
+  for (const s of sentences.slice(0, 3)) {
+    // Skip sentences that are purely changelog disclaimers or version listings
+    if (/^(?:Note that|From version|In version|Fixed in|See vendor|This issue was addressed)/i.test(s)) {
+      continue;
+    }
+    if (/^(?:macOS|iOS|iPadOS|Windows|Ubuntu|Debian)\s+\d/i.test(s)) {
+      continue;
+    }
+    selected.push(s);
+    if (selected.length === 2) break;
+  }
+
+  if (selected.length === 0) {
+    selected.push(sentences[0]);
+  }
+
+  let summary = selected.join(' ').trim();
+
+  // If excessively long, condense to primary impact sentence
+  if (summary.length > 280 && selected.length > 1) {
+    summary = selected[0].trim();
+  }
+
+  // Safe fallback if still unusually long
+  if (summary.length > 320) {
+    const cut = summary.slice(0, 220).replace(/\s+\S*$/, '');
+    return `Summary excerpt: ${cut}...`;
+  }
+
+  return summary;
+}
+
+/**
  * Helper to map backend normalized response into frontend CveData model.
  */
 export function mapBackendToCveData(res: VulnerabilityApiResponse): CveData {
@@ -317,7 +381,7 @@ export function mapBackendToCveData(res: VulnerabilityApiResponse): CveData {
     title: norm?.title || `Vulnerability ${res.cve_id}`,
     cve: res.cve_id,
     desc: norm?.description || 'Normalized threat intelligence record.',
-    summary: norm?.description || 'Normalized threat intelligence record.',
+    summary: norm?.summary || generateOperationalSummary(norm?.description, norm?.title, res.cve_id),
     technicalDescription: norm?.description || nvd.error_message || 'NVD record telemetry.',
     severity,
     severityColor: severityColors[severity],

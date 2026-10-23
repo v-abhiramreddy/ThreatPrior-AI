@@ -522,7 +522,7 @@ test.describe('Phase 3 Correction: Genuine Strands Decider 2B + Amazon Bedrock A
     // Disagreement alert in validation panel
     await expect(page.locator('#validation-disagreement-alert')).toBeVisible();
     await expect(page.locator('#validation-disagreement-alert')).toContainText('Model Decision vs. Deterministic Policy Discrepancy');
-    await expect(page.locator('#validation-disagreement-alert')).toContainText('not a secondary AI model');
+    await expect(page.locator('#validation-disagreement-alert')).toContainText('not a second AI model');
   });
 
   test('should render insufficient evidence badge when CISA KEV query fails', async ({ page }) => {

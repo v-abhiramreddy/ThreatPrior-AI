@@ -215,7 +215,8 @@ class CisaKevClient:
         if entry:
             notes = "Confirmed listed in CISA Known Exploited Vulnerabilities catalog."
             err_msg = None
-            if not catalog_fresh and self._last_refresh_error:
+            is_cached = not catalog_fresh or bool(self._last_refresh_error)
+            if is_cached and self._last_refresh_error:
                 err_msg = f"Upstream refresh failed: {self._last_refresh_error}. Data served from cached catalog."
                 notes = (
                     f"Confirmed listed in cached CISA KEV catalog (catalog version: {catalog_version}, "
@@ -223,10 +224,14 @@ class CisaKevClient:
                     f"Note: upstream refresh failed."
                 )
 
+            last_valid_refresh = self._last_refreshed if self._last_refreshed and self._last_refreshed.year > 2021 else None
             return CisaKevProvenance(
                 retrieved_at=retrieval_time,
                 status=SourceStatus.LISTED,
                 catalog_version=catalog_version,
+                catalog_date_released=self._catalog_metadata.get("dateReleased"),
+                last_refreshed_at=last_valid_refresh,
+                is_cached=is_cached,
                 is_listed=True,
                 date_added=entry.get("dateAdded"),
                 vendor_project=entry.get("vendorProject"),
@@ -245,10 +250,14 @@ class CisaKevClient:
             status = self._last_refresh_status or SourceStatus.FAILED
             refreshed_str = self._last_refreshed.isoformat() if self._last_refreshed else "unknown"
             err_detail = self._last_refresh_error or "Catalog cache is stale and could not be refreshed."
+            last_valid_refresh = self._last_refreshed if self._last_refreshed and self._last_refreshed.year > 2021 else None
             return CisaKevProvenance(
                 retrieved_at=retrieval_time,
                 status=status,
                 catalog_version=catalog_version,
+                catalog_date_released=self._catalog_metadata.get("dateReleased"),
+                last_refreshed_at=last_valid_refresh,
+                is_cached=True,
                 is_listed=False,
                 notes=(
                     f"Vulnerability not found in cached CISA KEV catalog, but cache is stale (last refreshed: {refreshed_str}) "
@@ -265,6 +274,9 @@ class CisaKevClient:
             retrieved_at=retrieval_time,
             status=SourceStatus.NOT_LISTED,
             catalog_version=catalog_version,
+            catalog_date_released=self._catalog_metadata.get("dateReleased"),
+            last_refreshed_at=self._last_refreshed,
+            is_cached=False,
             is_listed=False,
             notes=(
                 "Not listed in CISA KEV catalog. Absence from this catalog indicates only that "

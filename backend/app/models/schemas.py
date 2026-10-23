@@ -33,6 +33,9 @@ class CisaKevProvenance(BaseModel):
     retrieved_at: Optional[datetime] = None
     status: SourceStatus
     catalog_version: Optional[str] = None
+    catalog_date_released: Optional[str] = None
+    last_refreshed_at: Optional[datetime] = None
+    is_cached: bool = Field(default=False)
     is_listed: bool = Field(default=False)
     date_added: Optional[str] = None
     vendor_project: Optional[str] = None
@@ -81,6 +84,7 @@ class Provenance(BaseModel):
 class NormalizedVulnerability(BaseModel):
     title: str = Field(..., description="Vulnerability headline or identifier title")
     description: str = Field(..., description="Authoritative summary description")
+    summary: Optional[str] = Field(default=None, description="Concise plain-English operational summary")
     primary_severity: SeverityLevel = Field(..., description="Normalized primary severity rating")
     cvss_score: Optional[float] = None
     cvss_version: Optional[str] = None

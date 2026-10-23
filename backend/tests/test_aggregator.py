@@ -32,11 +32,32 @@ async def test_aggregator_full_success():
         assert res.normalized.is_cisa_kev is True
         assert res.normalized.epss_probability == 0.97410
         assert res.normalized.affected_cpe_count == 1
+        assert res.normalized.summary is not None
+        assert len(res.normalized.summary) > 0
 
         # Provenance verification
         assert res.provenance.nvd.status == SourceStatus.AVAILABLE
         assert res.provenance.cisa_kev.status == SourceStatus.LISTED
         assert res.provenance.epss.status == SourceStatus.AVAILABLE
+
+
+def test_generate_operational_summary_distinct():
+    from app.services.aggregator import generate_operational_summary
+
+    long_nvd_desc = (
+        "Apache Log4j2 versions 2.0-beta9 through 2.15.0 (excluding security releases 2.12.2, 2.12.3, and 2.3.1) "
+        "JNDI features used in configuration, log messages, and parameters do not protect against attacker-controlled LDAP "
+        "and other JNDI related endpoints. An attacker who can control log messages or log message parameters can execute "
+        "arbitrary code loaded from LDAP servers when message lookup substitution is enabled. From log4j 2.15.0, this behavior "
+        "has been disabled by default. In version 2.16.0, this functionality has been completely removed. Note that this "
+        "vulnerability is specific to log4j-core and does not affect log4net or log4cxx."
+    )
+
+    summary = generate_operational_summary(long_nvd_desc, "Log4Shell", "CVE-2021-44228")
+    assert summary is not None
+    assert len(summary) > 0
+    assert summary != long_nvd_desc
+    assert len(summary) < len(long_nvd_desc)
 
 
 @pytest.mark.asyncio

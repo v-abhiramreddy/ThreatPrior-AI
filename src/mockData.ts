@@ -89,7 +89,9 @@ export const DEMO_CVE_PRESETS: Record<string, CveData> = {
     rationale:
       'Log4j2 JNDI remote code execution enables unauthenticated attackers to execute arbitrary code with maximum structural impact. Driven by confirmed CISA KEV active exploitation in the wild and a 97.4% EPSS probability, this vulnerability demands instant mitigation across both internet-facing and internal VPC application tiers.',
     summary:
-      'Apache Log4j2 contains a critical remote code execution vulnerability in its JNDI lookup functionality. Attackers can execute arbitrary code with application privileges by submitting malicious LDAP or JNDI lookup strings into logged inputs. This enables unauthenticated system compromise across vulnerable enterprise Java applications.',
+      'Apache Log4j2 contains a critical remote code execution vulnerability in its JNDI lookup functionality. Attackers can execute arbitrary code with application privileges by submitting malicious LDAP or JNDI lookup strings into logged inputs, enabling unauthenticated system compromise.',
+    technicalDescription:
+      'Apache Log4j2 versions 2.0-beta9 through 2.15.0 (excluding security releases 2.12.2, 2.12.3, and 2.3.1) JNDI features used in configuration, log messages, and parameters do not protect against attacker-controlled LDAP and other JNDI related endpoints. An attacker who can control log messages or log message parameters can execute arbitrary code loaded from LDAP servers when message lookup substitution is enabled. From log4j 2.15.0, this behavior has been disabled by default. In version 2.16.0 (and 2.12.2, 2.12.3, 2.3.1), this functionality has been completely removed. Note that this vulnerability is specific to log4j-core and does not affect log4net, log4cxx, or other Apache Logging Services projects.',
     remediationSteps: [
       {
         step: 1,
@@ -165,7 +167,22 @@ export const DEMO_CVE_PRESETS: Record<string, CveData> = {
     priorityColor: 'text-tertiary-container',
     priorityContainerColor: 'bg-tertiary-container/20 border-tertiary-container/30',
     summary:
-      'Apple iOS and macOS contain a zero-day vulnerability in undocumented hardware memory-mapped I/O (MMIO) registers. Attackers can bypass hardware page protections to modify sensitive kernel state. Observed in sophisticated in-the-wild targeted cyber espionage campaigns.',
+      'A local application may be able to modify sensitive kernel state and bypass hardware page protections on vulnerable Apple devices. Observed in active in-the-wild targeted zero-day exploit chains.',
+    technicalDescription:
+      'An app may be able to modify sensitive kernel state. Apple is aware of a report that this issue may have been actively exploited against versions of iOS released before iOS 15.7. macOS Ventura 13.5, iOS 16.6 and iPadOS 16.6, watchOS 9.6, tvOS 16.6, iOS 15.7.8 and iPadOS 15.7.8, macOS Monterey 12.6.8, macOS Big Sur 11.7.9.',
+    riskValidation: {
+      validation_rules_version: '2026.1-policy',
+      risk_validation_status: 'disagreement',
+      model_priority: 'High',
+      evidence_priority: 'Critical',
+      validation_explanation:
+        'Policy Disagreement: Model assigned High priority, while deterministic evidence policy evaluates to Critical. Primary policy trigger: Confirmed CISA KEV active exploitation combined with critical impact (CVSS >= 8.5 or high EPSS). Deterministic policy findings represent organizational rules, not an alternate AI model.',
+      risk_factors: [
+        'NVD CVSS Base Score: 8.8 (HIGH) [Published: 2023-07-28].',
+        'CISA KEV: Listed as confirmed active threat (Added: 2023-07-28) [Catalog Version: 2026.10.15].',
+        'FIRST.org EPSS: 82.10% 30-day exploit likelihood, Top 2.6% (Observed · Project heuristic threshold: >=20%).',
+      ],
+    },
     rationale:
       'Apple iOS/macOS MMIO zero-day allows attackers to bypass hardware security layers to modify sensitive kernel state. Documented in-wild exploitation for targeted surveillance warrants expedited patching across all enterprise mobile and workstation endpoints.',
     remediationSteps: [
@@ -194,7 +211,7 @@ export const DEMO_CVE_PRESETS: Record<string, CveData> = {
     evidence: {
       nvd: {
         abstract:
-          'An app may be able to modify sensitive kernel state. Apple is aware of a report that this issue may have been actively exploited against versions of iOS released before iOS 15.7.',
+          'An app may be able to modify sensitive kernel state. Apple is aware of a report that this issue may have been actively exploited against versions of iOS released before iOS 15.7. macOS Ventura 13.5, iOS 16.6 and iPadOS 16.6, watchOS 9.6, tvOS 16.6, iOS 15.7.8 and iPadOS 15.7.8, macOS Monterey 12.6.8, macOS Big Sur 11.7.9.',
         evaluatedAgo: '1h ago',
         vectors: [
           { label: 'ATTACK VECTOR (AV)', value: 'Local (AV:L)' },
@@ -242,7 +259,22 @@ export const DEMO_CVE_PRESETS: Record<string, CveData> = {
     rationale:
       'Bypasses Office Protected View via file: links containing exclamation points. Enables local NTLM hash exfiltration and remote code execution with minimal user interaction upon previewing untrusted emails.',
     summary:
-      'Microsoft Outlook contains a remote code execution vulnerability bypassing Office Protected View when handling MonikerLink hyperlinks. An attacker can force local NTLM hash transmission or execute arbitrary code upon email preview without user interaction.',
+      'A link handling vulnerability in Microsoft Outlook allows an attacker to bypass Office Protected View and trigger remote code execution or NTLM credential leakage via a specially crafted hyperlink.',
+    technicalDescription:
+      'Microsoft Outlook Remote Code Execution Vulnerability (MonikerLink). An attacker who successfully exploited this vulnerability could bypass Office Protected View and execute arbitrary code. Exploitation requires sending an email containing a specially crafted link that bypasses Protected View protocol checks when clicked or previewed.',
+    riskValidation: {
+      validation_rules_version: '2026.1-policy',
+      risk_validation_status: 'aligned',
+      model_priority: 'Critical',
+      evidence_priority: 'Critical',
+      validation_explanation:
+        'Policy Aligned: Model-assigned \'Critical\' priority is fully consistent with deterministic evidence policy rules (v2026.1-policy). Grounded trigger: Confirmed CISA KEV active exploitation combined with critical impact (CVSS >= 8.5 or high EPSS).',
+      risk_factors: [
+        'NVD CVSS Base Score: 9.8 (CRITICAL) [Published: 2024-02-13].',
+        'CISA KEV: Listed as confirmed active threat (Added: 2024-03-05) [Catalog Version: 2026.10.15].',
+        'FIRST.org EPSS: 88.90% 30-day exploit likelihood, Top 1.5% (Observed · Project heuristic threshold: >=20%).',
+      ],
+    },
     remediationSteps: [
       {
         step: 1,
