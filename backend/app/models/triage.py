@@ -69,6 +69,14 @@ class RiskValidationResult(BaseModel):
         ...,
         description="Clear, transparent explanation of policy assessment and any discrepancies with model output",
     )
+    policy_rule: Optional[str] = Field(
+        default=None,
+        description="Specific deterministic policy rule evaluated (e.g. 'Policy Rule 1 (Critical Severity)')",
+    )
+    discrepancy_summary: Optional[str] = Field(
+        default=None,
+        description="Concise explanation of the exact evidence and policy rule responsible for model-vs-policy discrepancy",
+    )
 
 
 class Stage2BedrockOutput(BaseModel):

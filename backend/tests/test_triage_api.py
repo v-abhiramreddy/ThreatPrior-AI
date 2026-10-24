@@ -14,6 +14,8 @@ from tests.conftest import (
     MOCK_CISA_CATALOG,
     MOCK_NVD_LOG4SHELL,
     MOCK_EPSS_LOG4SHELL,
+    MOCK_NVD_XZ_UTILS,
+    MOCK_EPSS_XZ_UTILS,
 )
 
 
@@ -295,3 +297,80 @@ async def test_triage_api_rate_limiting(monkeypatch):
             assert "Retry-After" in r3.headers
 
     triage_rate_limiter.clear()
+
+
+@pytest.mark.asyncio
+async def test_triage_api_cve_2024_3094_disagreement_handling(monkeypatch):
+    """Verify that CVE-2024-3094 (XZ Utils) triage API:
+    1. Ingests authoritative NVD CVSS 10.0 and EPSS 0.909 data with CISA KEV NOT_LISTED.
+    2. Faithfully reports Strands Decider 2B output (High / Priority 2) without overwriting.
+    3. Surfaces deterministic policy Critical assessment and explicit disagreement explanation.
+    4. Accurately describes the backdoor impact in normalized summary.
+    """
+    async with respx.mock(assert_all_called=False) as respx_mock:
+        # CISA KEV catalog does not contain CVE-2024-3094 -> NOT_LISTED
+        respx_mock.get(settings.cisa_kev_url).respond(status_code=200, json=MOCK_CISA_CATALOG)
+        respx_mock.get(settings.nvd_api_base_url).respond(status_code=200, json=MOCK_NVD_XZ_UTILS)
+        respx_mock.get(settings.epss_api_url).respond(status_code=200, json=MOCK_EPSS_XZ_UTILS)
+
+        # Decider outputs High (Priority 2) based on absence of active KEV weaponization
+        mock_decider = create_mock_decider(priority="High", confidence=0.88)
+        monkeypatch.setattr(decision_engine, "strands_client", mock_decider)
+
+        # Bedrock synthesis
+        mock_bedrock = MagicMock()
+        mock_payload = {
+            "priority": "High",
+            "rationale": "XZ Utils supply-chain backdoor allows unauthorized authentication bypass, but not listed in CISA KEV.",
+            "risk_factors": ["CVSS 10.0 Maximum Severity", "High EPSS Probability", "Supply Chain Backdoor"],
+            "recommended_action": "Immediately downgrade xz to 5.4.x or upgrade to clean vendor release.",
+            "evidence_limitations": ["CISA KEV listing status is NOT_LISTED."],
+        }
+        mock_bedrock.converse.return_value = {
+            "output": {"message": {"content": [{"text": json.dumps(mock_payload)}]}}
+        }
+        monkeypatch.setattr(decision_engine, "_injected_client", mock_bedrock)
+
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/api/vulnerabilities/CVE-2024-3094/triage")
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["cve_id"] == "CVE-2024-3094"
+            assert data["status"] == "OK"
+
+            # Normalized evidence assertions
+            norm = data["normalized"]
+            assert norm["cvss_score"] == 10.0
+            assert norm["cvss_version"] == "3.1"
+            assert norm["primary_severity"] == "CRITICAL"
+            assert norm["is_cisa_kev"] is False
+            assert norm["epss_probability"] == pytest.approx(0.909, abs=1e-3)
+            assert norm["epss_percentile"] == pytest.approx(0.998, abs=1e-3)
+            assert norm["affected_cpe_count"] == 2
+            assert "malicious code" in norm["summary"].lower()
+            assert "5.6.0 and 5.6.1" in norm["summary"]
+            assert "compromised components were used" in norm["summary"]
+
+            # AI Decision assertions - MUST NOT be overwritten
+            decision = data["decision"]
+            assert decision["priority"] == "High"
+            assert decision["decider_model_id"] == "strands-decider-2b"
+            assert decision["decider_status"] == "success"
+
+            # Risk validation assertions - Disagreement cleanly surfaced
+            val = data["risk_validation"]
+            assert val is not None
+            assert val["model_priority"] == "High"
+            assert val["evidence_priority"] == "Critical"
+            assert val["risk_validation_status"] == "disagreement"
+            assert val["policy_rule"] == "Policy Rule 1 (Critical Severity)"
+            assert val["discrepancy_summary"] is not None
+            assert "10.0" in val["discrepancy_summary"]
+            assert "CISA KEV" in val["discrepancy_summary"]
+
+            # Provenance checks
+            assert data["provenance"]["nvd"]["status"] == "AVAILABLE"
+            assert data["provenance"]["cisa_kev"]["status"] == "NOT_LISTED"
+            assert data["provenance"]["epss"]["status"] == "AVAILABLE"
+

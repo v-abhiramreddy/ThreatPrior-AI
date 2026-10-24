@@ -45,7 +45,10 @@ export const DEMO_CVE_PRESETS: Record<string, CveData> = {
       model_priority: 'High',
       evidence_priority: 'Critical',
       validation_explanation:
-        'Policy Disagreement: Model assigned High priority, while deterministic evidence policy evaluates to Critical. Primary policy trigger: Confirmed CISA KEV active exploitation combined with critical impact (CVSS >= 8.5 or high EPSS). Deterministic policy findings represent organizational rules, not an alternate AI model.',
+        'Policy Disagreement: Model assigned High priority, while deterministic evidence policy evaluates to Critical. Primary policy trigger: Confirmed CISA KEV active exploitation combined with critical impact (CVSS >= 8.5 or high EPSS). Responsible Policy Rule & Evidence: Policy Rule 1 (Critical Severity) mandates Critical priority for confirmed CISA KEV active exploitation. Responsible Evidence: Listed in CISA KEV with CVSS 10.0 and EPSS 97.4%, whereas the AI model assigned High. Deterministic policy findings represent organizational rules, not an alternate AI model.',
+      policy_rule: 'Policy Rule 1 (Critical Severity)',
+      discrepancy_summary:
+        'Policy Rule 1 (Critical Severity) mandates Critical priority for confirmed CISA KEV active exploitation. Responsible Evidence: Listed in CISA KEV with CVSS 10.0 and EPSS 97.4%, whereas the AI model assigned High.',
       risk_factors: [
         'NVD CVSS Base Score: 10.0 (CRITICAL) [Published: 2021-12-10T10:15:08.767].',
         'CISA KEV: Listed as confirmed active threat (Added: 2021-12-10) [Catalog Version: 2026.10.15].',
@@ -176,7 +179,10 @@ export const DEMO_CVE_PRESETS: Record<string, CveData> = {
       model_priority: 'High',
       evidence_priority: 'Critical',
       validation_explanation:
-        'Policy Disagreement: Model assigned High priority, while deterministic evidence policy evaluates to Critical. Primary policy trigger: Confirmed CISA KEV active exploitation combined with critical impact (CVSS >= 8.5 or high EPSS). Deterministic policy findings represent organizational rules, not an alternate AI model.',
+        'Policy Disagreement: Model assigned High priority, while deterministic evidence policy evaluates to Critical. Primary policy trigger: Confirmed CISA KEV active exploitation combined with critical impact (CVSS >= 8.5 or high EPSS). Responsible Policy Rule & Evidence: Policy Rule 1 (Critical Severity) mandates Critical priority for confirmed CISA KEV active exploitation. Responsible Evidence: Listed in CISA KEV with CVSS 8.8 and EPSS 82.1%, whereas the AI model assigned High. Deterministic policy findings represent organizational rules, not an alternate AI model.',
+      policy_rule: 'Policy Rule 1 (Critical Severity)',
+      discrepancy_summary:
+        'Policy Rule 1 (Critical Severity) mandates Critical priority for confirmed CISA KEV active exploitation. Responsible Evidence: Listed in CISA KEV with CVSS 8.8 and EPSS 82.1%, whereas the AI model assigned High.',
       risk_factors: [
         'NVD CVSS Base Score: 8.8 (HIGH) [Published: 2023-07-28].',
         'CISA KEV: Listed as confirmed active threat (Added: 2023-07-28) [Catalog Version: 2026.10.15].',

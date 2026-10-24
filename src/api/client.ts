@@ -194,7 +194,8 @@ export async function fetchTriageDecision(
 export function generateOperationalSummary(
   sourceDescription?: string | null,
   title?: string | null,
-  _cveId?: string | null
+  _cveId?: string | null,
+  cpeConfigurations?: string[]
 ): string {
   const fallbackText =
     'Operational Summary Fallback: Standardized plain-English overview unavailable from source telemetry. Refer to authoritative Technical Description below.';
@@ -211,7 +212,54 @@ export function generateOperationalSummary(
     return fallbackText;
   }
 
-  // 1. Determine attacker position / access vector
+  // Extract affected versions if available from CPE configurations or description
+  const affectedVersions: string[] = [];
+  if (cpeConfigurations) {
+    for (const cpe of cpeConfigurations) {
+      const parts = cpe.split(':');
+      if (parts.length >= 6) {
+        const v = parts[5];
+        if (v && v !== '*' && v !== '-' && !affectedVersions.includes(v)) {
+          affectedVersions.push(v);
+        }
+      }
+    }
+  }
+  if (affectedVersions.length === 0) {
+    const matches = lower.match(/\b(?:version|releases?)\s+(\d+\.\d+(?:\.\d+)?)\b/g);
+    if (matches) {
+      for (const m of matches) {
+        const vMatch = m.match(/(\d+\.\d+(?:\.\d+)?)/);
+        if (vMatch && !affectedVersions.includes(vMatch[1])) {
+          affectedVersions.push(vMatch[1]);
+        }
+      }
+    }
+  }
+
+  let cleanTitle = '';
+  if (title && !title.toUpperCase().startsWith('CVE-')) {
+    cleanTitle = title.replace(/^(?:Vulnerability\s+)?(?:CVE-\d{4}-\d+\s*[-:]?\s*)?/i, '').replace(/\s*\(CVE-\d{4}-\d+\)$/i, '').trim();
+  }
+
+  // 1. Supply-chain backdoor handling (prioritized to preserve supply-chain context)
+  const isSupplyChain = ['malicious code', 'backdoor', 'upstream tarball', 'prebuilt object', 'supply chain', 'compromised release'].some((w) => lower.includes(w));
+
+  if (isSupplyChain) {
+    const actor = 'A supply-chain adversary or unauthorized attacker';
+    const targetProd = cleanTitle ? ` of ${cleanTitle}` : '';
+    let impact: string;
+    if (affectedVersions.length > 0) {
+      const verStr = affectedVersions.slice(0, 3).join(' and ');
+      impact = `exploit unauthorized malicious code introduced into upstream releases (${verStr})${targetProd}`;
+    } else {
+      impact = `exploit unauthorized malicious code embedded into upstream software components${targetProd}`;
+    }
+    const risk = 'unauthorized function interception, remote authentication bypass, and arbitrary code execution with elevated system privileges';
+    return `${actor} can ${impact}. On systems where compromised components were used, this introduces practical risk of ${risk}.`;
+  }
+
+  // 2. Determine attacker position / access vector for other vulnerability types
   let actor = 'An attacker';
   if (['remote', 'network', 'unauthenticated', 'remotely'].some((w) => lower.includes(w))) {
     actor = 'An unauthenticated remote attacker';
@@ -221,46 +269,39 @@ export function generateOperationalSummary(
     actor = 'An attacker with adjacent network access';
   }
 
-  // 2. Extract grounded vulnerability mechanism and practical risk
-  let impact: string | null = null;
+  // 3. Extract grounded vulnerability mechanism and practical risk
+  let impactAction: string | null = null;
   let risk: string | null = null;
 
-  if (['remote code execution', 'execute arbitrary code', 'arbitrary code execution', 'rce', 'code execution'].some((w) => lower.includes(w))) {
-    impact = 'exploit arbitrary code execution vulnerabilities';
+  if (/\b(?:remote code execution|execute arbitrary code|arbitrary code execution|rce|code execution)\b/.test(lower)) {
+    impactAction = 'exploit arbitrary code execution vulnerabilities';
     risk = 'complete host takeover, internal network traversal, and unauthorized service manipulation';
   } else if (['privilege escalation', 'elevation of privilege', 'gain privileges', 'modify sensitive kernel'].some((w) => lower.includes(w))) {
-    impact = 'bypass operating system protections to elevate privileges';
+    impactAction = 'bypass operating system protections to elevate privileges';
     risk = 'unauthorized administrative control and disabling of core security mechanisms';
   } else if (['memory corruption', 'buffer overflow', 'heap-based buffer', 'out-of-bounds', 'use-after-free'].some((w) => lower.includes(w))) {
-    impact = 'corrupt memory boundaries to alter application execution';
+    impactAction = 'corrupt memory boundaries to alter application execution';
     risk = 'unexpected process crashes or unauthorized code execution within system processes';
   } else if (['sql injection', 'command injection', 'injection vulnerability'].some((w) => lower.includes(w))) {
-    impact = 'inject malicious commands into application processing routines';
+    impactAction = 'inject malicious commands into application processing routines';
     risk = 'unauthorized database exfiltration and arbitrary command execution';
   } else if (['credential', 'ntlm', 'information disclosure', 'sensitive information', 'information leak'].some((w) => lower.includes(w))) {
-    impact = 'intercept or exfiltrate sensitive data and authentication credentials';
+    impactAction = 'intercept or exfiltrate sensitive data and authentication credentials';
     risk = 'credential harvesting, lateral movement, and confidential record exposure';
   } else if (['bypass', 'protected view', 'sandbox', 'access control'].some((w) => lower.includes(w))) {
-    impact = 'bypass security boundaries and isolation controls';
+    impactAction = 'bypass security boundaries and isolation controls';
     risk = 'defense-in-depth compromise and unauthorized access to restricted assets';
   } else if (['denial of service', 'crash', 'resource exhaustion'].some((w) => lower.includes(w))) {
-    impact = 'trigger unexpected service termination or resource starvation';
+    impactAction = 'trigger unexpected service termination or resource starvation';
     risk = 'severe application outages and prolonged operational downtime';
   }
 
-  if (!impact) {
+  if (!impactAction) {
     return fallbackText;
   }
 
-  let targetClause = '';
-  if (title && !title.toUpperCase().startsWith('CVE-')) {
-    const cleanTitle = title.replace(/^(?:Vulnerability\s+)?(?:CVE-\d{4}-\d+\s*[-:]?\s*)?/i, '').trim();
-    if (cleanTitle) {
-      targetClause = ` in ${cleanTitle}`;
-    }
-  }
-
-  return `${actor} can ${impact}${targetClause}. In an enterprise environment, this introduces practical risk of ${risk}.`;
+  const targetClause = cleanTitle ? ` in ${cleanTitle}` : '';
+  return `${actor} can ${impactAction}${targetClause}. In an enterprise environment, this introduces practical risk of ${risk}.`;
 }
 
 /**
@@ -306,7 +347,9 @@ export function mapBackendToCveData(res: VulnerabilityApiResponse): CveData {
       : 'N/A';
   const epssPercentile =
     norm?.epss_percentile !== null && norm?.epss_percentile !== undefined
-      ? `${Math.round(norm.epss_percentile * 100)}th Percentile`
+      ? (norm.epss_percentile >= 0.99
+          ? `${(norm.epss_percentile * 100).toFixed(1)}th Percentile`
+          : `${Math.round(norm.epss_percentile * 100)}th Percentile`)
       : 'Unscored';
   const epssNote = epss.score_date
     ? `FIRST.org v3 (Score Date: ${epss.score_date})`
@@ -396,7 +439,7 @@ export function mapBackendToCveData(res: VulnerabilityApiResponse): CveData {
     title: norm?.title || `Vulnerability ${res.cve_id}`,
     cve: res.cve_id,
     desc: norm?.description || 'Normalized threat intelligence record.',
-    summary: norm?.summary || generateOperationalSummary(norm?.description, norm?.title, res.cve_id),
+    summary: norm?.summary || generateOperationalSummary(norm?.description, norm?.title, res.cve_id, nvd.cpe_configurations),
     technicalDescription: norm?.description || nvd.error_message || 'NVD record telemetry.',
     severity,
     severityColor: severityColors[severity],
@@ -417,8 +460,11 @@ export function mapBackendToCveData(res: VulnerabilityApiResponse): CveData {
       nvd: {
         abstract: norm?.description || nvd.error_message || 'NVD record telemetry.',
         evaluatedAgo: nvd.last_modified_date ? new Date(nvd.last_modified_date).toLocaleDateString() : (nvd.published_date ? new Date(nvd.published_date).toLocaleDateString() : 'N/A'),
+        publishedDate: nvd.published_date ? new Date(nvd.published_date).toLocaleDateString() : 'N/A',
+        lastModifiedDate: nvd.last_modified_date ? new Date(nvd.last_modified_date).toLocaleDateString() : 'N/A',
+        evaluatedAt: res.retrieved_at ? new Date(res.retrieved_at).toLocaleString() : 'Live',
         vectors: vectorPairs.length > 0 ? vectorPairs : [{ label: 'CVSS', value: norm?.cvss_score ? norm.cvss_score.toFixed(1) : 'N/A' }],
-        cpe: (nvd.cpe_configurations || []).slice(0, 3).join('\n') || (norm?.affected_cpe_count ? `${norm.affected_cpe_count} affected product CPE configurations indexed.` : 'No CPE signatures published.'),
+        cpe: (nvd.cpe_configurations || []).join('\n') || (norm?.affected_cpe_count ? `${norm.affected_cpe_count} affected product CPE configurations indexed.` : 'No CPE signatures published.'),
       },
       cisa: {
         listedDate: cisa.date_added || (cisa.status === 'NOT_LISTED' ? 'Not in KEV' : 'Unavailable'),

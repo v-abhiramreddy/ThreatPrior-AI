@@ -343,3 +343,127 @@ async def test_9_decider_only_and_baseline_modes_retain_risk_validation():
     assert decider_decision.risk_validation.model_priority == TriagePriority.HIGH
     assert decider_decision.risk_validation.evidence_priority == TriagePriority.CRITICAL
     assert decider_decision.risk_validation.risk_validation_status == RiskValidationStatus.DISAGREEMENT
+
+
+# ==============================================================================
+# Test 10: CVE-2024-3094 (XZ Utils) CVSS 10.0 Critical but Unlisted in CISA KEV
+# ==============================================================================
+def test_10_cve_2024_3094_cvss_critical_unlisted_kev_regression():
+    """Regression test for CVE-2024-3094:
+    - CVSS 3.1 Base Score 10.0 (Critical)
+    - CISA KEV: NOT_LISTED (is_listed=False)
+    - FIRST EPSS: 0.909 (90.9% probability)
+    - AI Model assigns High (due to unlisted status in CISA KEV)
+    - Deterministic Policy Rule 1 evaluates to Critical (CVSS >= 9.5)
+    - Outcome: Disagreement detected, AI priority preserved without overwrite,
+      exact responsible rule and evidence surfaced.
+    """
+    resp = _create_sample_response(
+        cve_id="CVE-2024-3094",
+        cvss_score=10.0,
+        is_kev=False,
+        kev_status=SourceStatus.NOT_LISTED,
+        epss_prob=0.909,
+    )
+
+    # Strands Decider 2B predicted High because KEV is unlisted
+    model_orig_priority = TriagePriority.HIGH
+    result = risk_validator.validate(resp, model_priority=model_orig_priority)
+
+    # 1. Deterministic policy evaluates to Critical (Policy Rule 1)
+    assert result.evidence_priority == TriagePriority.CRITICAL
+    assert result.policy_rule == "Policy Rule 1 (Critical Severity)"
+
+    # 2. AI model recommendation is strictly preserved (never overwritten)
+    assert result.model_priority == TriagePriority.HIGH
+    assert model_orig_priority == TriagePriority.HIGH
+
+    # 3. Disagreement status is accurately reported (never falsely claiming agreement)
+    assert result.risk_validation_status == RiskValidationStatus.DISAGREEMENT
+
+    # 4. Concise explanation identifies exact responsible rule and evidence
+    assert result.discrepancy_summary is not None
+    assert "Policy Rule 1" in result.discrepancy_summary
+    assert "10.0 >= 9.5" in result.discrepancy_summary
+    assert "NOT_LISTED" in result.discrepancy_summary
+
+    assert "Policy Disagreement: Model assigned 'High', while deterministic evidence policy evaluates to 'Critical'" in result.validation_explanation
+    assert "Extreme CVSS severity (>= 9.5) with unmitigated remote attack vector" in result.validation_explanation
+    assert "Deterministic policy findings represent organizational rules, not an alternate AI model" in result.validation_explanation
+
+    # 5. Telemetry findings contain exact ground truth metrics
+    findings_str = " ".join(result.risk_factors)
+    assert "NVD CVSS Base Score: 10.0 (CRITICAL)" in findings_str
+    assert "CISA KEV: Not listed in catalog as of current sync" in findings_str
+    assert "90.90%" in findings_str
+
+
+# ==============================================================================
+# Test 11: CVE-2021-44228 (Log4Shell) Alignment and Disagreement Cases
+# ==============================================================================
+def test_11_cve_2021_44228_log4shell_alignment_and_disagreement_cases():
+    """Validates both aligned and disagreement cases for CVE-2021-44228:
+    - CVSS 10.0, CISA KEV listed, EPSS 0.974
+    """
+    resp = _create_sample_response(
+        cve_id="CVE-2021-44228",
+        cvss_score=10.0,
+        is_kev=True,
+        epss_prob=0.974,
+    )
+
+    # Case A: AI model aligns with policy (assigns Critical)
+    aligned_result = risk_validator.validate(resp, model_priority=TriagePriority.CRITICAL)
+    assert aligned_result.evidence_priority == TriagePriority.CRITICAL
+    assert aligned_result.model_priority == TriagePriority.CRITICAL
+    assert aligned_result.risk_validation_status == RiskValidationStatus.ALIGNED
+    assert aligned_result.policy_rule == "Policy Rule 1 (Critical Severity)"
+    assert "Policy Aligned" in aligned_result.validation_explanation
+
+    # Case B: AI model deviates (assigns High)
+    disagree_result = risk_validator.validate(resp, model_priority=TriagePriority.HIGH)
+    assert disagree_result.evidence_priority == TriagePriority.CRITICAL
+    assert disagree_result.model_priority == TriagePriority.HIGH
+    assert disagree_result.risk_validation_status == RiskValidationStatus.DISAGREEMENT
+    assert disagree_result.policy_rule == "Policy Rule 1 (Critical Severity)"
+    assert disagree_result.discrepancy_summary is not None
+    assert "Policy Rule 1" in disagree_result.discrepancy_summary
+    assert "CISA KEV" in disagree_result.discrepancy_summary
+    assert "Policy Disagreement" in disagree_result.validation_explanation
+
+
+# ==============================================================================
+# Test 12: General Policy Rule for CVSS-Critical Flaws Not Listed in CISA KEV
+# ==============================================================================
+def test_12_cvss_critical_unlisted_kev_general_policy_rule():
+    """Validates the general policy rule on arbitrary non-KEV CVEs:
+    - CVSS >= 9.5 without CISA KEV triggers Policy Rule 1 (Critical)
+    - CVSS 9.0 - 9.4 without CISA KEV triggers Policy Rule 2 (High)
+    """
+    # Flaw A: CVSS 9.8, unlisted in KEV, low EPSS (0.05)
+    resp_98 = _create_sample_response(
+        cve_id="CVE-2023-99999",
+        cvss_score=9.8,
+        is_kev=False,
+        kev_status=SourceStatus.NOT_LISTED,
+        epss_prob=0.05,
+    )
+    result_98 = risk_validator.validate(resp_98, model_priority=TriagePriority.HIGH)
+    assert result_98.evidence_priority == TriagePriority.CRITICAL
+    assert result_98.policy_rule == "Policy Rule 1 (Critical Severity)"
+    assert result_98.risk_validation_status == RiskValidationStatus.DISAGREEMENT
+    assert "9.8 >= 9.5" in (result_98.discrepancy_summary or "")
+
+    # Flaw B: Boundary check - CVSS 9.4 (< 9.5) unlisted in KEV, low EPSS (0.05)
+    # Evaluates to HIGH under Policy Rule 2
+    resp_94 = _create_sample_response(
+        cve_id="CVE-2023-88888",
+        cvss_score=9.4,
+        is_kev=False,
+        kev_status=SourceStatus.NOT_LISTED,
+        epss_prob=0.05,
+    )
+    result_94 = risk_validator.validate(resp_94, model_priority=TriagePriority.HIGH)
+    assert result_94.evidence_priority == TriagePriority.HIGH
+    assert result_94.policy_rule == "Policy Rule 2 (High Severity)"
+    assert result_94.risk_validation_status == RiskValidationStatus.ALIGNED

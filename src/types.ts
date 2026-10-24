@@ -37,6 +37,9 @@ export interface CveData {
     nvd: {
       abstract: string;
       evaluatedAgo: string;
+      publishedDate?: string;
+      lastModifiedDate?: string;
+      evaluatedAt?: string;
       vectors: Array<{ label: string; value: string }>;
       cpe: string;
     };
@@ -195,6 +198,8 @@ export interface RiskValidationResult {
   risk_factors: string[];
   validation_rules_version: string;
   validation_explanation: string;
+  policy_rule?: string | null;
+  discrepancy_summary?: string | null;
 }
 
 export interface TriageDecision {

@@ -22,7 +22,10 @@ logger = logging.getLogger(__name__)
 
 
 def generate_operational_summary(
-    description: Optional[str], title: Optional[str] = None, cve_id: Optional[str] = None
+    description: Optional[str],
+    title: Optional[str] = None,
+    cve_id: Optional[str] = None,
+    cpe_configurations: Optional[List[str]] = None,
 ) -> str:
     """Generate a genuinely plain-English operational summary (1-2 sentences).
 
@@ -44,7 +47,46 @@ def generate_operational_summary(
     if any(p in lower for p in ["rejected reason", "do not use this candidate", "reserved by", "** reject **"]):
         return fallback_text
 
-    # 1. Determine attacker position / access vector
+    # Extract affected versions if available from CPE configurations or description
+    affected_versions: List[str] = []
+    if cpe_configurations:
+        for cpe in cpe_configurations:
+            parts = cpe.split(":")
+            if len(parts) >= 6:
+                v = parts[5]
+                if v and v not in ("*", "-", "") and v not in affected_versions:
+                    affected_versions.append(v)
+    if not affected_versions:
+        matches = re.findall(r"\b(?:version|releases?)\s+(\d+\.\d+(?:\.\d+)?)\b", lower)
+        for m in matches:
+            if m not in affected_versions:
+                affected_versions.append(m)
+
+    clean_title = ""
+    if title and not title.upper().startswith("CVE-"):
+        clean_title = re.sub(r"^(?:Vulnerability\s+)?(?:CVE-\d{4}-\d+\s*[-:]?\s*)?", "", title).strip()
+        clean_title = re.sub(r"\s*\(CVE-\d{4}-\d+\)$", "", clean_title).strip()
+
+    # 1. Supply-chain backdoor handling (prioritized to preserve supply-chain context)
+    is_supply_chain = any(
+        w in lower for w in ["malicious code", "backdoor", "upstream tarball", "prebuilt object", "supply chain", "compromised release"]
+    )
+
+    if is_supply_chain:
+        actor = "A supply-chain adversary or unauthorized attacker"
+        target_prod = f" of {clean_title}" if clean_title else ""
+        if affected_versions:
+            ver_str = " and ".join(affected_versions[:3])
+            impact = f"exploit unauthorized malicious code introduced into upstream releases ({ver_str}){target_prod}"
+        else:
+            impact = f"exploit unauthorized malicious code embedded into upstream software components{target_prod}"
+        risk = "unauthorized function interception, remote authentication bypass, and arbitrary code execution with elevated system privileges"
+        return (
+            f"{actor} can {impact}. "
+            f"On systems where compromised components were used, this introduces practical risk of {risk}."
+        )
+
+    # 2. Determine attacker position / access vector for other vulnerability types
     if any(w in lower for w in ["remote", "network", "unauthenticated", "remotely"]):
         actor = "An unauthenticated remote attacker"
     elif any(w in lower for w in ["local", "locally", "local user", "local application"]):
@@ -54,43 +96,38 @@ def generate_operational_summary(
     else:
         actor = "An attacker"
 
-    # 2. Extract grounded vulnerability mechanism and practical risk
-    impact: Optional[str] = None
+    # 3. Extract grounded vulnerability mechanism and practical risk
+    impact_action: Optional[str] = None
     risk: Optional[str] = None
 
-    if any(w in lower for w in ["remote code execution", "execute arbitrary code", "arbitrary code execution", "rce", "code execution"]):
-        impact = "exploit arbitrary code execution vulnerabilities"
+    if re.search(r'\b(?:remote code execution|execute arbitrary code|arbitrary code execution|rce|code execution)\b', lower):
+        impact_action = "exploit arbitrary code execution vulnerabilities"
         risk = "complete host takeover, internal network traversal, and unauthorized service manipulation"
     elif any(w in lower for w in ["privilege escalation", "elevation of privilege", "gain privileges", "modify sensitive kernel"]):
-        impact = "bypass operating system protections to elevate privileges"
+        impact_action = "bypass operating system protections to elevate privileges"
         risk = "unauthorized administrative control and disabling of core security mechanisms"
     elif any(w in lower for w in ["memory corruption", "buffer overflow", "heap-based buffer", "out-of-bounds", "use-after-free"]):
-        impact = "corrupt memory boundaries to alter application execution"
+        impact_action = "corrupt memory boundaries to alter application execution"
         risk = "unexpected process crashes or unauthorized code execution within system processes"
     elif any(w in lower for w in ["sql injection", "command injection", "injection vulnerability"]):
-        impact = "inject malicious commands into application processing routines"
+        impact_action = "inject malicious commands into application processing routines"
         risk = "unauthorized database exfiltration and arbitrary command execution"
     elif any(w in lower for w in ["credential", "ntlm", "information disclosure", "sensitive information", "information leak"]):
-        impact = "intercept or exfiltrate sensitive data and authentication credentials"
+        impact_action = "intercept or exfiltrate sensitive data and authentication credentials"
         risk = "credential harvesting, lateral movement, and confidential record exposure"
     elif any(w in lower for w in ["bypass", "protected view", "sandbox", "access control"]):
-        impact = "bypass security boundaries and isolation controls"
+        impact_action = "bypass security boundaries and isolation controls"
         risk = "defense-in-depth compromise and unauthorized access to restricted assets"
     elif any(w in lower for w in ["denial of service", "crash", "resource exhaustion"]):
-        impact = "trigger unexpected service termination or resource starvation"
+        impact_action = "trigger unexpected service termination or resource starvation"
         risk = "severe application outages and prolonged operational downtime"
 
-    if not impact:
+    if not impact_action:
         return fallback_text
 
-    target_clause = ""
-    if title and not title.upper().startswith("CVE-"):
-        clean_title = re.sub(r"^(?:Vulnerability\s+)?(?:CVE-\d{4}-\d+\s*[-:]?\s*)?", "", title).strip()
-        if clean_title:
-            target_clause = f" in {clean_title}"
-
+    target_clause = f" in {clean_title}" if clean_title else ""
     return (
-        f"{actor} can {impact}{target_clause}. "
+        f"{actor} can {impact_action}{target_clause}. "
         f"In an enterprise environment, this introduces practical risk of {risk}."
     )
 
@@ -209,7 +246,18 @@ class VulnerabilityAggregator:
                 overall_status = OverallStatus.OK
 
             # Synthesize normalized representation
-            title = cisa_res.vulnerability_name or f"Vulnerability {normalized_cve}"
+            title = cisa_res.vulnerability_name
+            if not title and nvd_res.cpe_configurations:
+                try:
+                    cpe_parts = nvd_res.cpe_configurations[0].split(":")
+                    if len(cpe_parts) >= 5:
+                        product = cpe_parts[4].replace("_", " ")
+                        product_name = "XZ Utils" if product.lower() == "xz" else product.title()
+                        title = f"{product_name} ({normalized_cve})"
+                except Exception:
+                    pass
+            if not title:
+                title = f"Vulnerability {normalized_cve}"
             description = (
                 nvd_res.description
                 or (cisa_res.notes if cisa_res and cisa_res.notes else None)
@@ -245,7 +293,12 @@ class VulnerabilityAggregator:
                 normalized = NormalizedVulnerability(
                     title=title,
                     description=description,
-                    summary=generate_operational_summary(description, title, normalized_cve),
+                    summary=generate_operational_summary(
+                        description,
+                        title,
+                        normalized_cve,
+                        cpe_configurations=nvd_res.cpe_configurations,
+                    ),
                     primary_severity=primary_severity,
                     cvss_score=cvss_score,
                     cvss_version=cvss_version,

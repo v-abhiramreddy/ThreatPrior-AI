@@ -160,3 +160,98 @@ MOCK_EPSS_EMPTY: Dict[str, Any] = {
     "total": 0,
     "data": [],
 }
+
+MOCK_NVD_XZ_UTILS: Dict[str, Any] = {
+    "resultsPerPage": 1,
+    "startIndex": 0,
+    "totalResults": 1,
+    "format": "NVD_CVE",
+    "version": "2.0",
+    "timestamp": "2026-10-24T00:00:00.000",
+    "vulnerabilities": [
+        {
+            "cve": {
+                "id": "CVE-2024-3094",
+                "sourceIdentifier": "secalert@redhat.com",
+                "published": "2024-03-29T17:15:21.150",
+                "lastModified": "2026-06-17T07:43:17.830",
+                "vulnStatus": "Modified",
+                "descriptions": [
+                    {
+                        "lang": "en",
+                        "value": (
+                            "Malicious code was discovered in the upstream tarballs of xz, starting with version 5.6.0. "
+                            "Through a series of complex obfuscations, the liblzma build process extracts a prebuilt object file "
+                            "from a disguised test file existing in the source code, which is then used to modify specific functions "
+                            "in the liblzma code. This results in a modified liblzma library that can be used by any software linked "
+                            "against this library, intercepting and modifying the data interaction with this library."
+                        ),
+                    }
+                ],
+                "metrics": {
+                    "cvssMetricV31": [
+                        {
+                            "source": "nvd@nist.gov",
+                            "type": "Primary",
+                            "cvssData": {
+                                "version": "3.1",
+                                "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+                                "baseScore": 10.0,
+                                "baseSeverity": "CRITICAL",
+                                "attackVector": "NETWORK",
+                                "attackComplexity": "LOW",
+                                "privilegesRequired": "NONE",
+                                "userInteraction": "NONE",
+                                "scope": "CHANGED",
+                                "confidentialityImpact": "HIGH",
+                                "integrityImpact": "HIGH",
+                                "availabilityImpact": "HIGH",
+                            },
+                            "exploitabilityScore": 3.9,
+                            "impactScore": 6.0,
+                        }
+                    ]
+                },
+                "weaknesses": [
+                    {
+                        "source": "nvd@nist.gov",
+                        "type": "Primary",
+                        "description": [{"lang": "en", "value": "CWE-506"}],
+                    }
+                ],
+                "configurations": [
+                    {
+                        "nodes": [
+                            {
+                                "operator": "OR",
+                                "negate": False,
+                                "cpeMatch": [
+                                    {"vulnerable": True, "criteria": "cpe:2.3:a:tukaani:xz:5.6.0:*:*:*:*:*:*:*"},
+                                    {"vulnerable": True, "criteria": "cpe:2.3:a:tukaani:xz:5.6.1:*:*:*:*:*:*:*"},
+                                ],
+                            }
+                        ]
+                    }
+                ],
+            }
+        }
+    ],
+}
+
+MOCK_EPSS_XZ_UTILS: Dict[str, Any] = {
+    "status": "OK",
+    "status-code": 200,
+    "version": "1.0",
+    "access": "public",
+    "total": 1,
+    "offset": 0,
+    "limit": 100,
+    "data": [
+        {
+            "cve": "CVE-2024-3094",
+            "epss": "0.909000000",
+            "percentile": "0.998090000",
+            "date": "2026-10-23",
+        }
+    ],
+}

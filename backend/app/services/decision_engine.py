@@ -474,7 +474,7 @@ class DecisionEngine:
             )
 
         # Baseline Priority Deterministic Matrix
-        if is_kev and cvss_score >= 8.5:
+        if (is_kev and (cvss_score >= 8.5 or epss_prob >= 0.50)) or cvss_score >= 9.5:
             priority = TriagePriority.CRITICAL
             recommended_action = (
                 prov.cisa_kev.required_action
@@ -482,7 +482,12 @@ class DecisionEngine:
             )
             confidence = 0.95
             confidence_explanation = (
-                "Standard baseline heuristic evaluation: confirmed active exploitation in CISA KEV with critical CVSS severity."
+                "Standard baseline heuristic evaluation: "
+                + (
+                    "confirmed active exploitation in CISA KEV with critical CVSS severity."
+                    if is_kev
+                    else "extreme CVSS severity (>= 9.5) with unmitigated remote attack vector."
+                )
             )
         elif is_kev or cvss_score >= 7.0 or epss_prob >= 0.20:
             priority = TriagePriority.HIGH

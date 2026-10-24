@@ -147,11 +147,15 @@ class EvidenceRiskValidator:
         effective_cvss = cvss_score or 0.0
         effective_epss = epss_prob if epss_prob is not None else 0.0
 
+        responsible_rule: Optional[str] = None
+        discrepancy_summary: Optional[str] = None
+
         # Policy Rule 1: CRITICAL
         # Confirmed KEV active threat + (Critical CVSS >= 8.5 or Extreme EPSS >= 0.50),
         # OR extreme remote CVSS >= 9.5
         if (is_kev and (effective_cvss >= 8.5 or effective_epss >= EPSS_CRITICAL_HEURISTIC)) or effective_cvss >= 9.5:
             evidence_priority = TriagePriority.CRITICAL
+            responsible_rule = "Policy Rule 1 (Critical Severity)"
             policy_trigger = (
                 "Confirmed CISA KEV active exploitation combined with critical impact (CVSS >= 8.5 or high EPSS)"
                 if is_kev else "Extreme CVSS severity (>= 9.5) with unmitigated remote attack vector"
@@ -161,6 +165,7 @@ class EvidenceRiskValidator:
         # Any confirmed KEV listing, OR elevated CVSS >= 7.0, OR high EPSS >= 0.20
         elif is_kev or effective_cvss >= CVSS_HIGH_THRESHOLD or effective_epss >= EPSS_HIGH_HEURISTIC:
             evidence_priority = TriagePriority.HIGH
+            responsible_rule = "Policy Rule 2 (High Severity)"
             if is_kev:
                 policy_trigger = "Confirmed CISA KEV listing without critical CVSS threshold"
             elif effective_cvss >= CVSS_HIGH_THRESHOLD:
@@ -172,12 +177,14 @@ class EvidenceRiskValidator:
         # Moderate CVSS (4.0 <= cvss < 7.0) or moderate EPSS (>= 0.05) with NO KEV listing
         elif effective_cvss >= CVSS_MEDIUM_THRESHOLD or effective_epss >= EPSS_MEDIUM_HEURISTIC:
             evidence_priority = TriagePriority.MEDIUM
+            responsible_rule = "Policy Rule 3 (Medium Severity)"
             policy_trigger = f"Moderate CVSS ({effective_cvss:.1f}) without confirmed in-the-wild exploitation"
 
         # Policy Rule 4: LOW
         # Low CVSS (< 4.0), low EPSS (< 0.05), and confirmed absence in CISA KEV
         else:
             evidence_priority = TriagePriority.LOW
+            responsible_rule = "Policy Rule 4 (Low Severity)"
             policy_trigger = f"Low CVSS ({effective_cvss:.1f}) and no active threat indicators"
 
         # -------------------------------------------------------------------
@@ -191,9 +198,37 @@ class EvidenceRiskValidator:
             )
         else:
             status = RiskValidationStatus.DISAGREEMENT
+            # Generate concise, exact explanation of the responsible rule and evidence
+            if evidence_priority == TriagePriority.CRITICAL and model_priority == TriagePriority.HIGH:
+                if not is_kev and effective_cvss >= 9.5:
+                    discrepancy_summary = (
+                        f"{responsible_rule} mandates Critical priority for extreme CVSS ({effective_cvss:.1f} >= 9.5) "
+                        f"regardless of CISA KEV listing status. Responsible Evidence: NVD CVSS is {effective_cvss:.1f} (Critical) "
+                        f"while CISA KEV status is NOT_LISTED, leading the AI model to recommend High whereas organizational policy enforces Critical."
+                    )
+                elif is_kev:
+                    discrepancy_summary = (
+                        f"{responsible_rule} mandates Critical priority for confirmed CISA KEV active exploitation. "
+                        f"Responsible Evidence: Listed in CISA KEV with CVSS {effective_cvss:.1f} and EPSS {effective_epss * 100:.1f}%, "
+                        f"whereas the AI model assigned High."
+                    )
+                else:
+                    discrepancy_summary = (
+                        f"{responsible_rule} mandates Critical priority ({policy_trigger}). "
+                        f"Responsible Evidence: CVSS {effective_cvss:.1f}, EPSS {effective_epss * 100:.1f}%."
+                    )
+            elif evidence_priority and model_priority:
+                discrepancy_summary = (
+                    f"{responsible_rule} mandates {evidence_priority.value} priority ({policy_trigger}). "
+                    f"Responsible Evidence: CVSS {effective_cvss:.1f}, CISA KEV {'Listed' if is_kev else 'Not Listed'}, "
+                    f"EPSS {effective_epss * 100:.1f}%, whereas the AI model assigned {model_priority.value}."
+                )
+
+            discrepancy_clause = f" Responsible Policy Rule & Evidence: {discrepancy_summary}." if discrepancy_summary else ""
+
             explanation = (
                 f"Policy Disagreement: Model assigned '{model_priority.value}', while deterministic evidence policy "
-                f"evaluates to '{evidence_priority.value}'. Primary policy trigger: {policy_trigger}. "
+                f"evaluates to '{evidence_priority.value}'. Primary policy trigger: {policy_trigger}.{discrepancy_clause} "
                 "Deterministic policy findings represent organizational rules, not an alternate AI model."
             )
 
@@ -204,6 +239,8 @@ class EvidenceRiskValidator:
             risk_factors=findings,
             validation_rules_version=self.rules_version,
             validation_explanation=explanation,
+            policy_rule=responsible_rule,
+            discrepancy_summary=discrepancy_summary,
         )
 
 

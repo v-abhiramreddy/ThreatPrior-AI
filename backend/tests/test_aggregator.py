@@ -69,6 +69,37 @@ def test_generate_operational_summary_distinct():
     assert "authoritative Technical Description below" in fallback
 
 
+def test_generate_operational_summary_cve_2024_3094_backdoor():
+    """Verify operational summary synthesis for CVE-2024-3094 XZ Utils supply chain backdoor."""
+    from app.services.aggregator import generate_operational_summary
+
+    xz_nvd_desc = (
+        "Malicious code was discovered in the upstream tarballs of xz, starting with version 5.6.0. "
+        "Through a series of complex obfuscations, the liblzma build process extracts a prebuilt object file "
+        "from a disguised test file existing in the source code, which is then used to modify specific functions "
+        "in the liblzma code. This results in a modified liblzma library that can be used by any software linked "
+        "against this library, intercepting and modifying the data interaction with this library."
+    )
+
+    summary = generate_operational_summary(xz_nvd_desc, "XZ Utils (CVE-2024-3094)", "CVE-2024-3094")
+    assert summary is not None
+    assert "Operational Summary Fallback:" not in summary
+    assert "malicious code" in summary
+    assert "XZ Utils" in summary
+    assert "5.6.0" in summary
+    assert "unauthorized function interception" in summary
+    assert "remote authentication bypass" in summary
+    assert "compromised components were used" in summary
+    assert not summary.startswith("Malicious code was discovered")
+
+    # With CPE configurations explicitly preserving both 5.6.0 and 5.6.1
+    cpes = ["cpe:2.3:a:tukaani:xz:5.6.0:*:*:*:*:*:*:*", "cpe:2.3:a:tukaani:xz:5.6.1:*:*:*:*:*:*:*"]
+    summary_cpe = generate_operational_summary(xz_nvd_desc, "XZ Utils (CVE-2024-3094)", "CVE-2024-3094", cpe_configurations=cpes)
+    assert "5.6.0 and 5.6.1" in summary_cpe
+    assert "upstream releases (5.6.0 and 5.6.1) of XZ Utils" in summary_cpe
+    assert "compromised components were used" in summary_cpe
+
+
 @pytest.mark.asyncio
 async def test_aggregator_partial_failure_nvd_rate_limited():
     aggregator = VulnerabilityAggregator()
